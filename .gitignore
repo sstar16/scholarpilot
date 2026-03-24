@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# 环境变量（API Key 绝对不能提交！）
+.env
+.env.local
+*.env
+
+# 数据库文件
+*.db
+*.sqlite
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+logs/
+*.log
+
+# Claude Code 缓存
+.claude/

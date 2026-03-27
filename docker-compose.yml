@@ -1,5 +1,3 @@
-version: "3.9"
-
 x-backend-env: &backend-env
   DATABASE_URL: ${DATABASE_URL}
   REDIS_URL: ${REDIS_URL}

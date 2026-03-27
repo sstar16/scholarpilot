@@ -66,6 +66,4 @@ async def execute_search(
         exclude_terms=query_plan.exclude_terms,
     )
 
-    # 限制最终返回数量
-    from app.services.query_builder import ROUND_CONFIGS
     return selected, total_candidates

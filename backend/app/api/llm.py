@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from typing import Optional
 from app.dependencies import get_current_user
 from app.models.user import User
+from app.config import settings
+from app.services.core.llm_config_store import save_llm_config, load_llm_config
 
 router = APIRouter(prefix="/api/llm", tags=["llm"])
 
@@ -17,7 +19,6 @@ def get_llm_manager():
     global _llm_manager
     if _llm_manager is None:
         from app.services.core.llm_providers import LLMProviderManager
-        from app.config import settings
         _llm_manager = LLMProviderManager(default_ollama_host=settings.ollama_host)
     return _llm_manager
 
@@ -54,6 +55,7 @@ async def configure_provider(
     result = manager.configure_provider(req.provider_id, config)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error"))
+    await save_llm_config(manager, settings.redis_url)
     return result
 
 
@@ -66,6 +68,7 @@ async def switch_provider(
     result = manager.set_active_provider(provider_id)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error"))
+    await save_llm_config(manager, settings.redis_url)
     return result
 
 
@@ -78,6 +81,7 @@ async def remove_provider(
     result = manager.remove_provider(provider_id)
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error"))
+    await save_llm_config(manager, settings.redis_url)
     return result
 
 

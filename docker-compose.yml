@@ -50,6 +50,7 @@ services:
     environment:
       <<: *backend-env
     volumes:
+      - ./backend/app:/app/app
       - ./data/pdfs:/app/data/pdfs
       - ./data/exports:/app/data/exports
     expose:
@@ -71,6 +72,7 @@ services:
     environment:
       <<: *backend-env
     volumes:
+      - ./backend/app:/app/app
       - ./data/pdfs:/app/data/pdfs
       - ./data/exports:/app/data/exports
     command: celery -A app.workers.celery_app worker -l info -Q default,fulltext -c 4

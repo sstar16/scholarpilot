@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from typing import List
 import uuid
 
@@ -79,8 +79,8 @@ async def delete_project(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project = await _get_project_or_404(project_id, current_user.id, db)
-    await db.delete(project)
+    await _get_project_or_404(project_id, current_user.id, db)
+    await db.execute(delete(Project).where(Project.id == project_id))
     await db.commit()
 
 

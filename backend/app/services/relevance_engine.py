@@ -82,6 +82,7 @@ def select_top_documents(
 
     # 过滤极低分（<0.05）
     relevant = [d for d in scored if d["_relevance_score"] >= 0.05]
+    print(f"[RelevanceEngine] 候选{len(scored)}篇, 过滤后{len(relevant)}篇, 分数分布: {[d['_relevance_score'] for d in scored[:5]]}")
     return relevant[:max_select]
 
 

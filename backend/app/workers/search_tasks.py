@@ -57,11 +57,17 @@ async def _execute_round_async(round_id_str: str):
             # 2. 标记为检索中
             await mark_round_searching(round_id, db)
 
-            # 3. 构建查询计划
-            query_plan = build_query(
+            # 3. 构建查询计划（加载用户配置的 LLM 用于中文描述翻译）
+            from app.services.core.llm_providers import LLMProviderManager
+            from app.services.core.llm_config_store import load_llm_config
+            llm_manager = LLMProviderManager(default_ollama_host=settings.ollama_host)
+            await load_llm_config(llm_manager, settings.redis_url)
+
+            query_plan = await build_query(
                 project_description=project.description,
                 project_domain=project.domain,
                 round_number=round_.round_number,
+                llm_manager=llm_manager,
             )
 
             # 4. 执行并行检索
@@ -145,8 +151,10 @@ async def _generate_summary_async(round_id_str: str, source: str, external_id: s
             if not doc:
                 return {"status": "skipped", "reason": "document not found"}
 
-            # 使用 Ollama 或已配置的 LLM（此处用默认配置）
+            # 从 Redis 加载用户配置的 LLM（包含 DeepSeek/OpenAI 等）
+            from app.services.core.llm_config_store import load_llm_config
             llm_manager = LLMProviderManager(default_ollama_host=settings.ollama_host)
+            await load_llm_config(llm_manager, settings.redis_url)
             summarizer = LLMSummarizer(llm_manager)
 
             doc_dict = {

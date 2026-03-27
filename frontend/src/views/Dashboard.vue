@@ -29,7 +29,10 @@
       >
         <div class="project-header">
           <span class="project-title">{{ p.title }}</span>
-          <el-tag :type="statusType(p.status)" size="small">{{ statusLabel(p.status) }}</el-tag>
+          <div style="display:flex;align-items:center;gap:6px">
+            <el-tag :type="statusType(p.status)" size="small">{{ statusLabel(p.status) }}</el-tag>
+            <el-button size="small" text type="danger" @click.stop="deleteProject(p)">删除</el-button>
+          </div>
         </div>
         <p class="project-desc">{{ p.description.slice(0, 100) }}...</p>
         <div class="project-meta">
@@ -52,6 +55,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { projectApi } from '../api/client'
 
 const router = useRouter()
@@ -66,6 +70,17 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function deleteProject(p: any) {
+  await ElMessageBox.confirm(`确认删除项目「${p.title}」？此操作不可撤销。`, '删除项目', { type: 'warning' })
+  try {
+    await projectApi.delete(p.id)
+    projects.value = projects.value.filter(x => x.id !== p.id)
+    ElMessage.success('项目已删除')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.detail || '删除失败')
+  }
+}
 
 function statusLabel(s: string) {
   return { active: '进行中', monitoring: '监控中', archived: '已归档' }[s] || s

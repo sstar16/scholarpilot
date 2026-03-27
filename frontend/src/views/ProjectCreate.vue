@@ -18,6 +18,7 @@
             <el-option label="生物医学 / Biology & Medicine" value="biology" />
             <el-option label="化学 / Chemistry" value="chemistry" />
             <el-option label="材料科学 / Materials Science" value="materials" />
+            <el-option label="设备机械 / Mechanical Engineering" value="mechanical" />
             <el-option label="计算机科学 / Computer Science" value="cs" />
             <el-option label="物理学 / Physics" value="physics" />
             <el-option label="经济学 / Economics" value="economics" />

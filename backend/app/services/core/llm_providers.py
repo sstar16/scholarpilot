@@ -479,3 +479,30 @@ class LLMProviderManager:
                 self.active_provider_id = "ollama"
             return {"success": True, "message": f"已移除 {provider_id}"}
         return {"success": False, "error": f"提供商 {provider_id} 未配置"}
+
+    def to_config_dict(self) -> Dict[str, Any]:
+        """序列化当前所有提供商配置为可持久化的字典"""
+        providers_data = {}
+        for pid, provider in self.providers.items():
+            p_data = {}
+            for attr in ("model", "api_key", "base_url", "host"):
+                val = getattr(provider, attr, None)
+                if val:
+                    p_data[attr] = val
+            if hasattr(provider, "_provider_name"):
+                p_data["provider_name"] = provider._provider_name
+            providers_data[pid] = p_data
+        return {
+            "active_provider_id": self.active_provider_id,
+            "providers": providers_data,
+        }
+
+    def restore_from_config_dict(self, data: Dict[str, Any]) -> None:
+        """从配置字典恢复提供商状态"""
+        for pid, p_config in data.get("providers", {}).items():
+            result = self.configure_provider(pid, p_config)
+            if not result.get("success"):
+                print(f"[LLMManager] 恢复配置失败 {pid}: {result.get('error')}")
+        active = data.get("active_provider_id", "ollama")
+        if active in self.providers:
+            self.active_provider_id = active

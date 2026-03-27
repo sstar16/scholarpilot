@@ -24,9 +24,10 @@
           >
             <div class="provider-row">
               <div>
-                <span class="provider-name">{{ PROVIDER_LABELS[p.provider_id] ?? p.provider_id }}</span>
+                <span class="provider-name">{{ p.display_name ?? p.provider_id }}</span>
                 <el-tag v-if="p.provider_id === activeProvider" type="success" size="small" style="margin-left:8px">使用中</el-tag>
-                <span class="provider-model">{{ p.model }}</span>
+                <el-tag v-if="!p.configured" type="info" size="small" style="margin-left:4px">未配置</el-tag>
+                <span class="provider-model">{{ p.model ?? (p.configured ? '' : p.description) }}</span>
               </div>
               <div class="provider-actions">
                 <el-button size="small" text type="primary" :disabled="p.provider_id === activeProvider"
@@ -82,14 +83,6 @@ import { reactive, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { llmApi } from '../api/client'
 
-const PROVIDER_LABELS: Record<string, string> = {
-  ollama: 'Ollama（本地）',
-  openai_compatible: 'OpenAI 兼容 API',
-  anthropic: 'Anthropic Claude',
-  deepseek: 'DeepSeek',
-  moonshot: 'Moonshot (Kimi)',
-}
-
 const loading = ref(true)
 const adding = ref(false)
 const testing = ref<string | null>(null)
@@ -128,7 +121,7 @@ async function switchProvider(id: string) {
   try {
     await llmApi.switchProvider(id)
     activeProvider.value = id
-    ElMessage.success(`已切换到 ${PROVIDER_LABELS[id] ?? id}`)
+    ElMessage.success(`已切换到 ${id}`)
   } catch (e: any) {
     ElMessage.error(e.response?.data?.detail || '切换失败')
   }
@@ -149,7 +142,8 @@ async function testCurrent(id: string) {
 }
 
 async function deleteProvider(id: string) {
-  await ElMessageBox.confirm(`确认删除 "${PROVIDER_LABELS[id] ?? id}"？`, '提示', { type: 'warning' })
+  const p = providers.value.find((p: any) => p.provider_id === id)
+  await ElMessageBox.confirm(`确认删除 "${p?.display_name ?? id}"？`, '提示', { type: 'warning' })
   try {
     await llmApi.deleteProvider(id)
     providers.value = providers.value.filter((p) => p.provider_id !== id)

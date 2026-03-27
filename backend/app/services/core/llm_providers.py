@@ -452,12 +452,17 @@ class LLMProviderManager:
         """获取所有可用的提供商模板信息"""
         result = []
         for pid, template in self.PROVIDER_TEMPLATES.items():
+            # 若该提供商已配置，取实际使用的 model
+            model = None
+            if pid in self.providers:
+                model = getattr(self.providers[pid], "model", None)
             info = {
-                "id": pid,
+                "provider_id": pid,               # 前端使用 p.provider_id
                 "display_name": template["display_name"],
                 "description": template["description"],
                 "requires_api_key": template["requires_api_key"],
                 "default_models": template["default_models"],
+                "model": model,                   # 已配置时显示当前模型名
                 "configured": pid in self.providers,
                 "active": pid == self.active_provider_id,
             }

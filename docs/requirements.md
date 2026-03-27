@@ -25,4 +25,6 @@
 12. 项目负责人在阅读资料的过程中反复和AI进行相关性互动。
 13. 在项目负责人满意并完成以往资料收集后，AI定时会进行每天在全球出现的新的信息和项目的关联性检索，并完成相关性判断，把AI认为高相关性的资料阅读并写成摘要后发给项目负责人。
 #############################################################################
-重点学习的开源仓库:https://github.com/karpathy/autoresearch
+重点学习的开源仓库:
+https://github.com/karpathy/autoresearch/
+https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep

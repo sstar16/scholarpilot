@@ -49,7 +49,7 @@
             <el-col :span="12">
               <el-form-item label="提供商类型">
                 <el-select v-model="form.provider_id" style="width:100%">
-                  <el-option v-for="(label, val) in PROVIDER_LABELS" :key="val" :label="label" :value="val" />
+                  <el-option v-for="p in providers" :key="p.provider_id" :label="p.display_name" :value="p.provider_id" />
                 </el-select>
               </el-form-item>
             </el-col>
@@ -121,7 +121,8 @@ async function switchProvider(id: string) {
   try {
     await llmApi.switchProvider(id)
     activeProvider.value = id
-    ElMessage.success(`已切换到 ${id}`)
+    const found = providers.value.find((p: any) => p.provider_id === id)
+    ElMessage.success(`已切换到 ${found?.display_name ?? id}`)
   } catch (e: any) {
     ElMessage.error(e.response?.data?.detail || '切换失败')
   }

@@ -52,6 +52,7 @@ services:
       <<: *backend-env
     volumes:
       - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
       - ./data/pdfs:/app/data/pdfs
       - ./data/exports:/app/data/exports
     expose:

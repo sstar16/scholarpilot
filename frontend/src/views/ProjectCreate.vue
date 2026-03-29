@@ -70,6 +70,36 @@
                 <span class="config-hint">搜索 ClinicalTrials.gov 临床试验</span>
               </el-form-item>
 
+              <el-divider content-position="left">检索范围</el-divider>
+
+              <el-form-item label="年份策略">
+                <el-select v-model="form.yearStrategy" style="width:100%">
+                  <el-option label="逐步扩展（默认）：近5年→10年→20年→全时间" value="progressive" />
+                  <el-option label="固定：近5年" value="last5" />
+                  <el-option label="固定：近10年" value="last10" />
+                  <el-option label="固定：近20年" value="last20" />
+                  <el-option label="全时间" value="all" />
+                </el-select>
+              </el-form-item>
+
+              <el-form-item label="语言优先级">
+                <el-radio-group v-model="form.languageScope">
+                  <el-radio value="chinese_first">中文优先</el-radio>
+                  <el-radio value="english_first">英文优先</el-radio>
+                  <el-radio value="bilingual">中英双语</el-radio>
+                </el-radio-group>
+              </el-form-item>
+
+              <el-form-item label="每轮返回结果数">
+                <el-input-number
+                  v-model="form.topK"
+                  :min="5" :max="200" :step="5"
+                  :disabled="form.topKAll"
+                />
+                <el-checkbox v-model="form.topKAll" style="margin-left:16px">全部结果</el-checkbox>
+                <div class="config-hint">「全部结果」将返回所有检索到的文献并按综合评分排序</div>
+              </el-form-item>
+
               <el-divider content-position="left">评分权重</el-divider>
               <div class="weight-sliders">
                 <div class="weight-row">
@@ -131,6 +161,10 @@ const form = reactive({
   maxRounds: 5,
   enablePatents: false,
   enableClinicalTrials: false,
+  yearStrategy: 'progressive',
+  languageScope: 'chinese_first',
+  topK: 10,
+  topKAll: false,
 })
 
 const weights = reactive({ keyword: 60, citation: 25, recency: 15 })
@@ -151,6 +185,9 @@ async function handleCreate() {
     const searchConfig: any = {
       enable_patents: form.enablePatents,
       enable_clinical_trials: form.enableClinicalTrials,
+      year_strategy: form.yearStrategy,
+      language_scope: form.languageScope,
+      top_k: form.topKAll ? null : form.topK,
       scoring_weights: {
         keyword: weights.keyword / 100,
         citation: weights.citation / 100,

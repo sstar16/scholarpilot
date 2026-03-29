@@ -35,21 +35,48 @@ const DEFAULT_STEPS = [
   { title: '第5轮', desc: '全时间 · 全球多语言 · AI摘要' },
 ]
 
+const YEAR_STRATEGY_LABELS: Record<string, (i: number) => string> = {
+  progressive: (i) => ['近5年', '近10年', '近20年', '全时间', '全时间'][i] ?? '全时间',
+  last5:  () => '近5年',
+  last10: () => '近10年',
+  last20: () => '近20年',
+  all:    () => '全时间',
+}
+
+function scopeLabel(scope: string) {
+  const map: Record<string, string> = {
+    chinese_first: '中文优先',
+    english_first: '英文优先',
+    bilingual:     '中英双语',
+    international: '国际',
+    global:        '全球多语言',
+  }
+  return map[scope] || scope
+}
+
 const steps = computed(() => {
   const maxRounds = props.project?.max_rounds || 5
   const config = props.project?.search_config
+
+  // per-round 自定义配置
   if (config?.rounds) {
     return config.rounds.map((r: any, i: number) => ({
       title: `第${i + 1}轮`,
-      desc: `${r.years ? `近${r.years}年` : '全时间'} · ${scopeLabel(r.scope)} · Top ${r.max_results}`,
+      desc: `${r.years ? `近${r.years}年` : '全时间'} · ${scopeLabel(r.scope)} · ${r.max_results ? `Top ${r.max_results}` : '全部'}`,
     }))
   }
-  return DEFAULT_STEPS.slice(0, maxRounds)
-})
 
-function scopeLabel(scope: string) {
-  return ({ chinese_first: '中文优先', international: '国际', global: '全球多语言' } as any)[scope] || scope
-}
+  // 全局配置
+  const yearStrategy = config?.year_strategy || 'progressive'
+  const langLabel = scopeLabel(config?.language_scope || 'chinese_first')
+  const topKLabel = config?.top_k === null ? '全部' : `Top ${config?.top_k ?? 10}`
+  const yearFn = YEAR_STRATEGY_LABELS[yearStrategy] ?? YEAR_STRATEGY_LABELS.progressive
+
+  return Array.from({ length: maxRounds }, (_, i) => ({
+    title: `第${i + 1}轮`,
+    desc: `${yearFn(i)} · ${langLabel} · ${topKLabel}`,
+  }))
+})
 
 const activeStep = computed(() => {
   if (!props.project) return 0

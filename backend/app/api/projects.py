@@ -32,11 +32,15 @@ async def create_project(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    domains = req.get_domains()
     project = Project(
         user_id=current_user.id,
         title=req.title,
         description=req.description,
-        domain=req.domain,
+        domain=domains[0] if domains else (req.domain or "other"),
+        domains=domains or [req.domain or "other"],
+        search_config=req.search_config,
+        max_rounds=req.max_rounds,
     )
     db.add(project)
     await db.commit()
@@ -68,6 +72,10 @@ async def update_project(
         project.description = req.description
     if req.status is not None:
         project.status = req.status
+    if req.search_config is not None:
+        project.search_config = req.search_config
+    if req.max_rounds is not None:
+        project.max_rounds = req.max_rounds
     await db.commit()
     await db.refresh(project)
     return project

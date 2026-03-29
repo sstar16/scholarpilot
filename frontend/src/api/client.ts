@@ -38,7 +38,7 @@ export const authApi = {
 
 export const projectApi = {
   list: () => api.get('/api/projects'),
-  create: (data: { title: string; description: string; domain: string }) =>
+  create: (data: any) =>
     api.post('/api/projects', data),
   get: (id: string) => api.get(`/api/projects/${id}`),
   update: (id: string, data: any) => api.patch(`/api/projects/${id}`, data),

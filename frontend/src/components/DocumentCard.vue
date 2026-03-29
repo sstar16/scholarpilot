@@ -93,6 +93,7 @@ const docTypeTag = computed(() => {
     paper: { label: '期刊论文', type: 'primary' },
     preprint: { label: '预印本', type: 'warning' },
     patent: { label: '专利', type: 'success' },
+    clinical_trial: { label: '临床试验', type: 'danger' },
   }
   return map[props.doc.doc_type] ?? { label: props.doc.doc_type, type: 'info' }
 })

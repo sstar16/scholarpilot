@@ -35,14 +35,19 @@
           </div>
         </div>
         <p class="project-desc">{{ p.description.slice(0, 100) }}...</p>
+        <div class="project-domains" v-if="p.domains && p.domains.length">
+          <el-tag v-for="d in p.domains" :key="d" size="small" type="info" style="margin-right:4px">{{ domainLabel(d) }}</el-tag>
+        </div>
+        <div class="project-domains" v-else>
+          <el-tag size="small" type="info">{{ domainLabel(p.domain) }}</el-tag>
+        </div>
         <div class="project-meta">
-          <span>领域：{{ p.domain }}</span>
-          <span>第 {{ p.current_round }} / 5 轮</span>
+          <span>第 {{ p.current_round }} / {{ p.max_rounds || 5 }} 轮</span>
           <span>{{ formatDate(p.created_at) }}</span>
         </div>
         <el-progress
           v-if="p.status === 'active'"
-          :percentage="p.current_round * 20"
+          :percentage="Math.round(p.current_round / (p.max_rounds || 5) * 100)"
           :stroke-width="4"
           :show-text="false"
           status="striped"
@@ -90,6 +95,14 @@ function statusType(s: string) {
 }
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('zh-CN')
+}
+const DOMAIN_LABELS: Record<string, string> = {
+  biology: '生物医学', chemistry: '化学', materials: '材料科学',
+  mechanical: '设备机械', cs: '计算机', physics: '物理学',
+  economics: '经济学', environment: '环境科学', other: '其他',
+}
+function domainLabel(d: string) {
+  return DOMAIN_LABELS[d] || d
 }
 </script>
 

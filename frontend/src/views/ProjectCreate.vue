@@ -13,8 +13,15 @@
           <el-input v-model="form.title" placeholder="例：纳米材料抗肿瘤药物递送系统研究" />
         </el-form-item>
 
-        <el-form-item label="研究领域">
-          <el-select v-model="form.domain" placeholder="选择领域" style="width:100%">
+        <el-form-item label="研究领域（可多选）">
+          <el-select
+            v-model="form.domains"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="选择一个或多个领域"
+            style="width:100%"
+          >
             <el-option label="生物医学 / Biology & Medicine" value="biology" />
             <el-option label="化学 / Chemistry" value="chemistry" />
             <el-option label="材料科学 / Materials Science" value="materials" />
@@ -44,15 +51,58 @@
           />
         </el-form-item>
 
+        <!-- 高级配置（默认收起） -->
+        <el-collapse v-model="activeCollapse" class="config-collapse">
+          <el-collapse-item title="高级搜索配置" name="advanced">
+            <div class="config-section">
+              <el-form-item label="检索轮数">
+                <el-input-number v-model="form.maxRounds" :min="1" :max="10" />
+                <span class="config-hint">默认5轮，可根据需要增减</span>
+              </el-form-item>
+
+              <el-form-item label="启用专利搜索">
+                <el-switch v-model="form.enablePatents" />
+                <span class="config-hint">搜索 USPTO 美国专利数据库</span>
+              </el-form-item>
+
+              <el-form-item label="启用临床试验搜索">
+                <el-switch v-model="form.enableClinicalTrials" />
+                <span class="config-hint">搜索 ClinicalTrials.gov 临床试验</span>
+              </el-form-item>
+
+              <el-divider content-position="left">评分权重</el-divider>
+              <div class="weight-sliders">
+                <div class="weight-row">
+                  <span class="weight-label">关键词相关性</span>
+                  <el-slider v-model="weights.keyword" :min="0" :max="100" :step="5" />
+                  <span class="weight-value">{{ weights.keyword }}%</span>
+                </div>
+                <div class="weight-row">
+                  <span class="weight-label">引用影响力</span>
+                  <el-slider v-model="weights.citation" :min="0" :max="100" :step="5" />
+                  <span class="weight-value">{{ weights.citation }}%</span>
+                </div>
+                <div class="weight-row">
+                  <span class="weight-label">发表时效性</span>
+                  <el-slider v-model="weights.recency" :min="0" :max="100" :step="5" />
+                  <span class="weight-value">{{ weights.recency }}%</span>
+                </div>
+                <div v-if="weightSum !== 100" class="weight-warning">
+                  <el-text type="warning" size="small">权重之和应为100%（当前{{ weightSum }}%）</el-text>
+                </div>
+              </div>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
+
         <el-alert
           type="info"
           :closable="false"
           show-icon
-          style="margin-bottom: 16px"
+          style="margin: 16px 0"
         >
           <template #title>
-            AI 将分5轮渐进式检索：近5年 → 10年 → 20年 → 全时间 → 全球多语言<br />
-            每轮结束后您对结果评分，AI 据此优化下一轮的检索方向
+            AI 将分{{ form.maxRounds }}轮渐进式检索，每轮结束后您对结果评分，AI 据此优化下一轮的检索方向
           </template>
         </el-alert>
 
@@ -65,23 +115,57 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { projectApi } from '../api/client'
 
 const router = useRouter()
 const loading = ref(false)
-const form = reactive({ title: '', description: '', domain: '' })
+const activeCollapse = ref<string[]>([])
+
+const form = reactive({
+  title: '',
+  description: '',
+  domains: [] as string[],
+  maxRounds: 5,
+  enablePatents: false,
+  enableClinicalTrials: false,
+})
+
+const weights = reactive({ keyword: 60, citation: 25, recency: 15 })
+const weightSum = computed(() => weights.keyword + weights.citation + weights.recency)
 
 async function handleCreate() {
-  if (!form.title || !form.description || !form.domain) {
-    ElMessage.warning('请填写所有字段')
+  if (!form.title || !form.description || form.domains.length === 0) {
+    ElMessage.warning('请填写项目名称、选择至少一个领域、并填写描述')
     return
   }
+  if (weightSum.value !== 100) {
+    ElMessage.warning('评分权重之和必须为100%')
+    return
+  }
+
   loading.value = true
   try {
-    const res = await projectApi.create(form)
+    const searchConfig: any = {
+      enable_patents: form.enablePatents,
+      enable_clinical_trials: form.enableClinicalTrials,
+      scoring_weights: {
+        keyword: weights.keyword / 100,
+        citation: weights.citation / 100,
+        recency: weights.recency / 100,
+      },
+    }
+
+    const res = await projectApi.create({
+      title: form.title,
+      description: form.description,
+      domain: form.domains[0],  // 向后兼容
+      domains: form.domains,
+      max_rounds: form.maxRounds,
+      search_config: searchConfig,
+    })
     router.push(`/projects/${res.data.id}`)
   } catch (e: any) {
     ElMessage.error(e.response?.data?.detail || '创建失败')
@@ -93,7 +177,15 @@ async function handleCreate() {
 
 <style scoped>
 .create-wrap { max-width: 700px; margin: 32px auto; padding: 0 16px; }
-.create-card {}
 .card-header { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; }
 .hint { display: block; color: #909399; font-size: 12px; font-weight: normal; margin-top: 2px; }
+.config-collapse { margin-bottom: 8px; }
+.config-section { padding: 0 8px; }
+.config-hint { color: #909399; font-size: 12px; margin-left: 12px; }
+.weight-sliders { margin-top: 8px; }
+.weight-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.weight-label { min-width: 100px; font-size: 14px; }
+.weight-row .el-slider { flex: 1; }
+.weight-value { min-width: 40px; text-align: right; font-size: 14px; color: #606266; }
+.weight-warning { margin-top: 4px; }
 </style>

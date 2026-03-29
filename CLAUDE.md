@@ -129,22 +129,66 @@ Celery Beat 每天早6点:
 
 ### Git
 
-- 分支：`feat/<功能名>` 或 `fix/<描述>` 从 `dev` 切出 → PR 到 `dev` → PR 到 `main`
+- 分支：直接提交到 `feat/mvp-bugfix-and-run`，不再走 worktree 分支 merge（2026-03-29 起）
 - Commit 格式：`feat:` / `fix:` / `refactor:` / `docs:` / `chore:`
+
+### el-table 内 el-select 的值绑定
+
+- **问题**：`el-table` scoped slot 内，`el-select` 使用 `:value="10"`（数字）时，v-model 绑定失效——所有行都显示第一个选项。
+- **规则**：el-table 内的 el-select 选项 **必须用字符串 value**（`value="10"`），提交时再 `parseInt` 转回数字。null 改为 `"all"` 等字符串占位。
+
+### 前端改动必须 rebuild
+
+- 后端 Python 文件有 volume 挂载，改完 `restart backend worker` 即可热更新。
+- 前端代码 **没有** volume 挂载，每次改动都必须：
+  ```bash
+  docker-compose build frontend && docker-compose up -d frontend && docker-compose restart nginx
+  ```
+
+### 临时公网访问
+
+开发期间对外共享，使用 Cloudflare Quick Tunnel（无需账号）：
+```bash
+cloudflared tunnel --url http://localhost
+# 输出一个 https://xxx.trycloudflare.com，每次重启URL会变
+```
+
+### 数据持久化
+
+- `docker-compose down` — 安全，保留 pgdata/redisdata volume
+- `docker-compose down -v` — **危险！** 删除所有 volume，数据库清空
+- 永远不要在生产/演示环境运行 `docker volume prune`
+
+### Lens.org 专利 API
+
+- 免费试用：[lens.org/lens/user/subscriptions](https://www.lens.org/lens/user/subscriptions) → Patent API → Trial Access
+- 配置：`.env` 中填 `LENS_API_TOKEN=<token>`
+- 覆盖：CN/US/EP/WO/JP/KR 等 90+ 国家，1.6亿+ 专利记录
+- Token 未配置时 `LensPatentFetcher.fetch()` 直接返回 `[]`，不报错
 
 ## Phase 规划
 
 | Phase | 关键功能 | 状态 |
 |-------|---------|------|
-| 1 MVP | 5轮渐进检索、AI摘要、用户画像、Docker部署 | 🔧 收尾中（Deadline 2026-04-04）|
-| 2 | 万方/百度学术、USPTO专利、PDF全文、pgvector embedding、邮件通知 | 待开发 |
+| 1 MVP | 5轮渐进检索、AI摘要、用户画像、Docker部署 | ✅ **dev0 发布**（2026-03-29）|
+| 2 | 万方/百度学术、PDF全文、pgvector embedding、邮件通知 | 待开发 |
 | 3 | EPO/WIPO专利、多语言检索、文献关系图、协作功能 | 规划中 |
 
-### Phase 1 遗留问题（MVP 前必须修复）
+### Phase 1 已完成
 
 - [x] PubMed 报错无详细信息 — 已加详细异常日志 + traceback（2026-03-29）
-- [x] Semantic Scholar 持续 429 — 已加指数退避重试；同时加入 `DISABLED_SOURCES` 默认禁用（2026-03-29）
+- [x] Semantic Scholar 持续 429 — 指数退避重试 + DISABLED_SOURCES 禁用（2026-03-29）
 - [x] 清理 `relevance_engine.py` 中的调试 print（2026-03-29）
-- [x] 非燃烧香料测试用例：Round 1 跑通（5篇文档 + AI摘要），反馈提交后 Round 2 自动轮询（2026-03-29）
+- [x] 非燃烧香料测试用例：Round 1 跑通，反馈提交后 Round 2 自动轮询（2026-03-29）
+- [x] 多领域选择、跨轮去重、综合评分（引用+时效）（2026-03-29）
+- [x] 可配置搜索流程：每轮独立设置年份/语言/Top K（2026-03-29）
+- [x] Lens.org 全球专利数据源（CN/US/EP/WO）（2026-03-29）
+- [x] 文献数 ≤ 3 时动态最低评分，不再卡住（2026-03-29）
+
+### Phase 2 待办
+
 - [ ] 爆珠生产线 / 新型烟草 / 牙髓干细胞 三个测试用例验证
-- [ ] Round 2–5 完整流程端到端验证（目前只验证了 Round 1→2 启动）
+- [ ] Round 2–5 完整流程端到端验证
+- [ ] 万方 / 百度学术 中文数据源
+- [ ] PDF 全文抓取 + pgvector embedding
+- [ ] 邮件通知（每日监控结果推送）

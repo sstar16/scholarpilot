@@ -68,7 +68,7 @@
                 style="margin-bottom:16px"
               >
                 <template #title>
-                  请对以下文献评分（至少完成3篇），AI 将根据您的反馈优化下一轮检索方向
+                  请对以下文献评分（{{ minRatingHint }}），AI 将根据您的反馈优化下一轮检索方向
                 </template>
               </el-alert>
 
@@ -77,7 +77,7 @@
                 <span>已评分 {{ searchStore.ratedCount }} / {{ searchStore.documents.length }} 篇</span>
                 <el-button
                   type="primary"
-                  :disabled="searchStore.ratedCount < 3"
+                  :disabled="searchStore.ratedCount < minRequired"
                   :loading="submitting"
                   @click="submitFeedback"
                 >
@@ -151,6 +151,16 @@ const nextRoundLabel = computed(() => {
   const maxRounds = project.value?.max_rounds || 5
   if (round >= maxRounds) return '完成全部检索'
   return `提交反馈，开始第 ${round + 1} 轮检索`
+})
+
+const minRequired = computed(() => {
+  const total = searchStore.documents.length
+  return total <= 3 ? total : 3
+})
+
+const minRatingHint = computed(() => {
+  const total = searchStore.documents.length
+  return total <= 3 ? `共${total}篇，请全部评分` : '至少完成3篇'
 })
 
 const ROUND_DESCS: Record<number, string> = {

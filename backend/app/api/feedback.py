@@ -26,12 +26,22 @@ async def submit_feedback(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if len(req.feedbacks) < 3:
-        raise HTTPException(status_code=400, detail="至少需要对3篇文献评分才能继续")
-
     # 验证项目和轮次归属
     project = await _get_project_or_404(project_id, current_user.id, db)
     round_ = await _get_round_or_404(round_id, project_id, db)
+
+    # 动态最低评分数：文献数 ≤ 3 时需全部评完，否则至少评 3 篇
+    total_docs_result = await db.execute(
+        select(RoundDocument).where(RoundDocument.round_id == round_id)
+    )
+    total_docs = len(total_docs_result.scalars().all())
+    min_required = total_docs if total_docs <= 3 else 3
+    if len(req.feedbacks) < min_required:
+        raise HTTPException(
+            status_code=400,
+            detail=f"请对全部{total_docs}篇文献评分后再继续" if total_docs <= 3
+                   else "至少需要对3篇文献评分才能继续"
+        )
 
     if round_.status != "awaiting_feedback":
         raise HTTPException(status_code=400, detail=f"当前轮次状态为 {round_.status}，不在等待反馈阶段")

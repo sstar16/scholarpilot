@@ -22,8 +22,13 @@ docker-compose restart backend worker
 docker-compose build backend worker beat flower
 docker-compose up -d
 
-# 容器被重建后（新 IP），nginx 必须重启才能刷新 DNS 缓存
+# ⚠️ 容器被 up -d 重建后（新 IP），nginx 必须重启才能刷新 DNS 缓存，否则 502
 docker-compose restart nginx
+# 完整重建流程（改了 .env 环境变量也要走这个）：
+# docker-compose up -d backend worker && docker-compose restart nginx
+
+# 改了前端代码（无 volume 挂载，需 build）
+docker-compose build frontend && docker-compose up -d frontend && docker-compose restart nginx
 
 # 查看日志
 docker-compose logs -f backend    # FastAPI 应用日志
@@ -32,8 +37,9 @@ docker-compose logs -f worker     # Celery worker 任务日志
 # 手动触发数据库迁移（通常由 backend 容器启动时自动执行）
 docker-compose exec backend alembic upgrade head
 
-# 新建迁移文件（修改了 models/ 后）
-docker-compose exec backend alembic revision --autogenerate -m "描述"
+# 新建迁移文件（修改了 models/ 后）——注意：--autogenerate 因缺少 mako 模板会报错
+# 改为手动创建文件：backend/alembic/versions/XXXX_描述.py，参考 0002_add_embedding_cols.py
+# alembic/ 目录已挂载到 backend 容器（./backend/alembic:/app/alembic），无需重建即可生效
 ```
 
 服务端口：`http://localhost`（前端）、`http://localhost:8000/docs`（Swagger）、`http://localhost:5555`（Flower 任务监控）
@@ -75,6 +81,18 @@ Celery Beat 每天早6点:
 ### 数据源扩展点
 
 所有数据源继承 `AbstractFetcher`（`fetchers/base.py`），实现 `fetch()` 方法后加入 `international.py` 的 `ALL_FETCHERS` 字典即可自动被 `search_engine.py` 调用。Phase 1 实现了 7 个国际来源；Phase 2 预留了万方、百度学术、USPTO、CNIPA 的注册占位。
+
+**国内 Docker/WSL2 环境网络限制（已验证）：**
+
+| 数据源 | 状态 | 说明 |
+|--------|------|------|
+| OpenAlex | ✅ 可访问 | 主力来源 |
+| EuropePMC | ✅ 可访问 | PubMed 的欧洲镜像，内容相同且有完整摘要 |
+| SemanticScholar | ⚠️ 限速 | 公开 API 频繁 429，默认禁用 |
+| PubMed (NCBI) | ❌ 封锁 | `eutils.ncbi.nlm.nih.gov` TLS 握手超时，用 EuropePMC 替代 |
+| arXiv | ❌ 封锁 | `export.arxiv.org` 超时，默认禁用 |
+
+通过 `.env` 的 `DISABLED_SOURCES=pubmed,arxiv,biorxiv,medrxiv,semantic_scholar` 控制禁用列表，无需改代码。`query_builder._select_sources()` 读取此变量过滤。
 
 ### LLM 提供商
 
@@ -124,7 +142,9 @@ Celery Beat 每天早6点:
 
 ### Phase 1 遗留问题（MVP 前必须修复）
 
-- [ ] PubMed 报错无详细信息 — 加详细异常日志
-- [ ] Semantic Scholar 持续 429 — 加指数退避重试
-- [ ] 清理 `relevance_engine.py` 中的调试 print
-- [ ] 跑通全部4个测试用例（非燃烧香料 ✅ / 爆珠生产线 / 新型烟草 / 牙髓干细胞）
+- [x] PubMed 报错无详细信息 — 已加详细异常日志 + traceback（2026-03-29）
+- [x] Semantic Scholar 持续 429 — 已加指数退避重试；同时加入 `DISABLED_SOURCES` 默认禁用（2026-03-29）
+- [x] 清理 `relevance_engine.py` 中的调试 print（2026-03-29）
+- [x] 非燃烧香料测试用例：Round 1 跑通（5篇文档 + AI摘要），反馈提交后 Round 2 自动轮询（2026-03-29）
+- [ ] 爆珠生产线 / 新型烟草 / 牙髓干细胞 三个测试用例验证
+- [ ] Round 2–5 完整流程端到端验证（目前只验证了 Round 1→2 启动）

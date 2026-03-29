@@ -29,8 +29,10 @@ async def start_round(
     """创建并启动下一轮检索"""
     project = await _get_project_or_404(project_id, current_user.id, db)
 
-    if project.current_round >= 5:
-        raise HTTPException(status_code=400, detail="已完成全部5轮检索，进入监控模式")
+    from app.services.query_builder import get_max_rounds
+    max_rounds = project.max_rounds or get_max_rounds(project.search_config)
+    if project.current_round >= max_rounds:
+        raise HTTPException(status_code=400, detail=f"已完成全部{max_rounds}轮检索，进入监控模式")
 
     # 检查当前轮次是否已完成
     if project.current_round > 0:

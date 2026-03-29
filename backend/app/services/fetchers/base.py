@@ -161,6 +161,22 @@ class FetcherRegistry:
             "language": "zh",
             "phase": 2,
         },
+        "clinical_trials": {
+            "name": "ClinicalTrials.gov",
+            "description": "美国临床试验注册数据库",
+            "doc_type": "clinical_trial",
+            "category": "clinical",
+            "language": "en",
+            "phase": 1,
+        },
+        "crossref": {
+            "name": "Crossref",
+            "description": "学术文献元数据聚合（1.3亿+记录）",
+            "doc_type": "paper",
+            "category": "literature",
+            "language": "en",
+            "phase": 1,
+        },
     }
 
     @classmethod

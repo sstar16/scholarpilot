@@ -367,6 +367,11 @@ class MedRxivFetcher(BioRxivFetcher):
     _server = "medrxiv"
 
 
+# 导入新数据源
+from app.services.fetchers.patents import USPTOFetcher
+from app.services.fetchers.clinical import ClinicalTrialsFetcher
+from app.services.fetchers.crossref import CrossrefFetcher
+
 # 注册表：source_id → fetcher 实例
 ALL_FETCHERS: Dict[str, AbstractFetcher] = {
     "pubmed": PubMedFetcher(),
@@ -376,4 +381,7 @@ ALL_FETCHERS: Dict[str, AbstractFetcher] = {
     "arxiv": ArXivFetcher(),
     "biorxiv": BioRxivFetcher(),
     "medrxiv": MedRxivFetcher(),
+    "uspto": USPTOFetcher(),
+    "clinical_trials": ClinicalTrialsFetcher(),
+    "crossref": CrossrefFetcher(),
 }

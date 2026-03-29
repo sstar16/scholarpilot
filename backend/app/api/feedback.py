@@ -110,7 +110,10 @@ async def submit_feedback(
     next_round_number = None
     monitoring_activated = False
 
-    if project.current_round < 5:
+    from app.services.query_builder import get_max_rounds
+    max_rounds = project.max_rounds or get_max_rounds(project.search_config)
+
+    if project.current_round < max_rounds:
         next_round = await create_next_round(project, db)
         await db.commit()
         next_round_id = next_round.id
@@ -124,7 +127,7 @@ async def submit_feedback(
     else:
         await activate_monitoring(project, db)
         monitoring_activated = True
-        message = "全部5轮检索完成，已激活每日监控模式"
+        message = f"全部{max_rounds}轮检索完成，已激活每日监控模式"
 
     return FeedbackResponse(
         saved=saved,

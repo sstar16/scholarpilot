@@ -4,8 +4,7 @@
 """
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +16,15 @@ from app.services.query_builder import QueryPlan
 async def execute_search(
     query_plan: QueryPlan,
     progress_callback=None,
+    exclude_doc_keys: Optional[Set[str]] = None,
+    scoring_weights: Optional[Dict[str, float]] = None,
 ) -> tuple[List[Dict], int]:
     """
-    执行单轮搜索（真正并行，与 v1 的 asyncio.gather 模式相同）
+    执行单轮搜索（真正并行）
     返回: (selected_docs, total_candidates)
+
+    exclude_doc_keys: 跨轮去重，格式 {"source:external_id", ...}
+    scoring_weights: 自定义评分权重 {"keyword": 0.6, "citation": 0.25, "recency": 0.15}
     """
 
     # 构建并行任务
@@ -43,7 +47,6 @@ async def execute_search(
     if not tasks:
         return [], 0
 
-    # 真正并行执行（继承 v1 的 asyncio.gather 模式）
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_docs: List[Dict] = []
@@ -61,12 +64,14 @@ async def execute_search(
     # 去重
     all_docs = deduplicate_docs(all_docs)
 
-    # 打分并选 Top-N
+    # 打分并选 Top-N（支持跨轮去重和综合评分）
     selected = select_top_documents(
         docs=all_docs,
         query_terms=query_plan.expanded_terms + (query_plan.exclude_terms or []),
         max_select=query_plan.max_results_per_source * len(task_sources),
         exclude_terms=query_plan.exclude_terms,
+        exclude_doc_keys=exclude_doc_keys,
+        scoring_weights=scoring_weights,
     )
 
     return selected, total_candidates

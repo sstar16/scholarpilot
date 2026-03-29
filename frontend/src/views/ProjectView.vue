@@ -11,7 +11,7 @@
           <el-button text @click="router.push('/dashboard')"><el-icon><ArrowLeft /></el-icon></el-button>
           <div>
             <h2 class="project-title">{{ project.title }}</h2>
-            <span class="project-domain">{{ project.domain }}</span>
+            <span class="project-domain">{{ (project.domains || [project.domain]).join(' · ') }}</span>
           </div>
         </div>
         <el-tag :type="statusType(project.status)" size="large">{{ statusLabel(project.status) }}</el-tag>
@@ -97,7 +97,7 @@
               </div>
 
               <!-- Completed round message -->
-              <div v-if="currentRound?.status === 'complete' && project.current_round < 5" class="next-round-panel">
+              <div v-if="currentRound?.status === 'complete' && project.current_round < (project.max_rounds || 5)" class="next-round-panel">
                 <el-result icon="success" title="本轮检索完成">
                   <template #sub-title>
                     已完成第 {{ currentRound.round_number }} 轮，下一轮将扩大时间范围继续检索
@@ -147,7 +147,8 @@ const processingMessage = computed(() => {
 
 const nextRoundLabel = computed(() => {
   const round = project.value?.current_round ?? 0
-  if (round >= 5) return '完成全部检索'
+  const maxRounds = project.value?.max_rounds || 5
+  if (round >= maxRounds) return '完成全部检索'
   return `提交反馈，开始第 ${round + 1} 轮检索`
 })
 

@@ -57,21 +57,60 @@ async def _execute_round_async(round_id_str: str):
             # 2. 标记为检索中
             await mark_round_searching(round_id, db)
 
-            # 3. 构建查询计划（加载用户配置的 LLM 用于中文描述翻译）
+            # 3. 构建跨轮去重集合（排除已出现 + 用户标不相关的文档）
+            from app.models.document import Document
+            from app.models.round_document import RoundDocument
+            from app.models.feedback import Feedback
+
+            # 已出现在前序轮次的文档
+            prev_docs_result = await db.execute(
+                select(Document.source, Document.external_id)
+                .join(RoundDocument, RoundDocument.document_id == Document.id)
+                .join(SearchRound, SearchRound.id == RoundDocument.round_id)
+                .where(SearchRound.project_id == project.id)
+            )
+            exclude_keys = {f"{row[0]}:{row[1]}" for row in prev_docs_result.all()}
+
+            # 用户标为不相关的文档
+            neg_result = await db.execute(
+                select(Document.source, Document.external_id)
+                .join(Feedback, Feedback.document_id == Document.id)
+                .where(
+                    Feedback.round_id.in_(
+                        select(SearchRound.id).where(SearchRound.project_id == project.id)
+                    ),
+                    Feedback.relevance == -1,
+                )
+            )
+            for row in neg_result.all():
+                exclude_keys.add(f"{row[0]}:{row[1]}")
+
+            # 4. 构建查询计划（加载用户配置的 LLM 用于中文描述翻译）
             from app.services.core.llm_providers import LLMProviderManager
             from app.services.core.llm_config_store import load_llm_config
             llm_manager = LLMProviderManager(default_ollama_host=settings.ollama_host)
             await load_llm_config(llm_manager, settings.redis_url)
+
+            # 获取评分权重（从项目搜索配置）
+            scoring_weights = None
+            if project.search_config and "scoring_weights" in project.search_config:
+                scoring_weights = project.search_config["scoring_weights"]
 
             query_plan = await build_query(
                 project_description=project.description,
                 project_domain=project.domain,
                 round_number=round_.round_number,
                 llm_manager=llm_manager,
+                search_config=project.search_config,
+                project_domains=project.domains,
             )
 
-            # 4. 执行并行检索
-            selected_docs, total_candidates = await execute_search(query_plan)
+            # 5. 执行并行检索（传入跨轮去重集合和评分权重）
+            selected_docs, total_candidates = await execute_search(
+                query_plan,
+                exclude_doc_keys=exclude_keys if exclude_keys else None,
+                scoring_weights=scoring_weights,
+            )
 
             # 5. 保存文档到数据库
             await save_round_documents(round_id, selected_docs, db)

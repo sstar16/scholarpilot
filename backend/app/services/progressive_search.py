@@ -14,26 +14,27 @@ from app.models.search_round import SearchRound
 from app.models.document import Document
 from app.models.round_document import RoundDocument
 from app.models.monitor_job import MonitorJob
-from app.services.query_builder import ROUND_CONFIGS, build_query
+from app.services.query_builder import ROUND_CONFIGS, build_query, _get_round_config, get_max_rounds
 
 
 async def create_next_round(
     project: Project,
     db: AsyncSession,
 ) -> SearchRound:
-    """创建下一轮（project.current_round + 1）"""
+    """创建下一轮（project.current_round + 1），支持自定义轮数"""
     next_num = project.current_round + 1
-    if next_num > 5:
-        raise ValueError("已完成全部5轮检索")
+    max_rounds = project.max_rounds or get_max_rounds(project.search_config)
+    if next_num > max_rounds:
+        raise ValueError(f"已完成全部{max_rounds}轮检索")
 
-    config = ROUND_CONFIGS[next_num]
+    config = _get_round_config(next_num, project.search_config)
     round_ = SearchRound(
         project_id=project.id,
         round_number=next_num,
         status="pending",
-        time_horizon_years=config["years"],
-        max_results=config["max_results"],
-        language_scope=config["scope"],
+        time_horizon_years=config.get("years"),
+        max_results=config.get("max_results", 20),
+        language_scope=config.get("scope", "international"),
     )
     db.add(round_)
     project.current_round = next_num
@@ -150,12 +151,12 @@ async def save_round_documents(
 
 
 async def activate_monitoring(project: Project, db: AsyncSession):
-    """第5轮完成后激活每日监控"""
-    # 获取最终轮次的查询配置
+    """最后一轮完成后激活每日监控"""
+    max_rounds = project.max_rounds or get_max_rounds(project.search_config)
     result = await db.execute(
         select(SearchRound).where(
             SearchRound.project_id == project.id,
-            SearchRound.round_number == 5,
+            SearchRound.round_number == max_rounds,
         )
     )
     round5 = result.scalar_one_or_none()

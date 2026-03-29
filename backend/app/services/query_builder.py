@@ -38,11 +38,33 @@ class QueryPlan:
 
 def _get_round_config(round_number: int, search_config: Optional[Dict[str, Any]] = None) -> Dict:
     """获取轮次配置，优先使用自定义配置"""
+    # 已有 per-round 配置时直接使用
     if search_config and "rounds" in search_config:
         rounds = search_config["rounds"]
         if 0 < round_number <= len(rounds):
             return rounds[round_number - 1]
-    return DEFAULT_ROUND_CONFIGS.get(round_number, DEFAULT_ROUND_CONFIGS[3])
+
+    base = dict(DEFAULT_ROUND_CONFIGS.get(round_number, DEFAULT_ROUND_CONFIGS[3]))
+    if not search_config:
+        return base
+
+    # 年份策略
+    year_strategy = search_config.get("year_strategy", "progressive")
+    if year_strategy != "progressive":
+        year_map = {"last5": 5, "last10": 10, "last20": 20, "all": None}
+        base["years"] = year_map.get(year_strategy, base["years"])
+
+    # 语言优先级
+    language_scope = search_config.get("language_scope")
+    if language_scope:
+        base["scope"] = language_scope
+
+    # 每轮返回数（top_k=None 表示全部）
+    if "top_k" in search_config:
+        top_k = search_config["top_k"]
+        base["max_results"] = top_k if top_k is not None else 500
+
+    return base
 
 
 def get_max_rounds(search_config: Optional[Dict[str, Any]] = None) -> int:

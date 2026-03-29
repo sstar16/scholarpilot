@@ -33,7 +33,7 @@ class PubMedFetcher(AbstractFetcher):
         articles = []
         pmid_to_article: Dict[str, Dict] = {}
 
-        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT, proxy=None) as client:
+        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT) as client:
             try:
                 r = await client.get(f"{PUBMED_BASE}/esearch.fcgi", params={
                     "db": "pubmed", "term": term, "retmax": max_results,
@@ -123,7 +123,7 @@ class OpenAlexFetcher(AbstractFetcher):
         if filters:
             params["filter"] = ",".join(filters)
 
-        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT, proxy=None) as client:
+        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT) as client:
             try:
                 r = await client.get(f"{OPENALEX_BASE}/works", params=params)
                 if r.status_code == 200:
@@ -180,7 +180,7 @@ class SemanticScholarFetcher(AbstractFetcher):
         if year_from:
             params["year"] = f"{year_from}-"
 
-        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT, proxy=None) as client:
+        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT) as client:
             try:
                 for attempt in range(4):
                     r = await client.get(f"{SEMANTIC_BASE}/paper/search", params=params, headers={"Accept": "application/json"})
@@ -227,7 +227,7 @@ class EuropePMCFetcher(AbstractFetcher):
         if year_from:
             q += f" AND (FIRST_PDATE:[{year_from}-01-01 TO {year_to or datetime.now().year}-12-31])"
 
-        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT, proxy=None) as client:
+        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT) as client:
             try:
                 r = await client.get(f"{EUROPE_PMC_BASE}/search", params={
                     "query": q, "format": "json",
@@ -273,7 +273,7 @@ class ArXivFetcher(AbstractFetcher):
             # arXiv 不支持 date 过滤，提交查询后客户端过滤
             pass
 
-        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT, proxy=None) as client:
+        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT) as client:
             try:
                 r = await client.get(f"{ARXIV_BASE}/query", params=params)
                 if r.status_code == 200:
@@ -323,7 +323,7 @@ class BioRxivFetcher(AbstractFetcher):
         base_url = BIORXIV_BASE if self._server == "biorxiv" else MEDRXIV_BASE
         search_words = [w for w in query.lower().split() if len(w) > 2]
 
-        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT, proxy=None) as client:
+        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT) as client:
             try:
                 cursor = 0
                 for _ in range(3):

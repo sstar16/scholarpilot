@@ -124,7 +124,11 @@ async def _get_english_query(description: str, llm_manager) -> str:
                 import json as _json
                 keywords = _json.loads(match.group())
                 if keywords and isinstance(keywords, list) and len(keywords) >= 2:
-                    query = " ".join(str(k) for k in keywords[:6])
+                    # Flatten all keyword phrases into individual words, keep max 8
+                    all_words = []
+                    for kw in keywords:
+                        all_words.extend(str(kw).split())
+                    query = " ".join(all_words[:8])
                     logger.debug("[QueryBuilder] LLM翻译查询: %s", query[:100])
                     return query
     except Exception as e:

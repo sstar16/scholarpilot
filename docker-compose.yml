@@ -13,6 +13,7 @@ x-backend-env: &backend-env
   HTTPS_PROXY: ${HTTPS_PROXY:-}
   http_proxy: ${HTTP_PROXY:-}
   https_proxy: ${HTTP_PROXY:-}
+  DISABLED_SOURCES: ${DISABLED_SOURCES:-}
 
 services:
   postgres:

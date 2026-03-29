@@ -139,22 +139,29 @@ async def _get_english_query(description: str, llm_manager) -> str:
 
 def _select_sources(scope: str, domain: str, preferred_sources: Optional[List[str]], round_number: int) -> List[str]:
     """根据范围和领域选择数据源"""
-    # Phase 1 核心来源
-    international_sources = ["pubmed", "openalex", "semantic_scholar", "europe_pmc"]
+    import os
+    # 通过环境变量禁用不可访问的数据源，逗号分隔，e.g. DISABLED_SOURCES=pubmed,biorxiv
+    disabled = {s.strip() for s in os.getenv("DISABLED_SOURCES", "").split(",") if s.strip()}
 
-    # 根据领域补充专用来源
+    # Phase 1 核心来源
+    international_sources = [s for s in ["pubmed", "openalex", "semantic_scholar", "europe_pmc"] if s not in disabled]
+
+    # 根据领域补充专用来源（同样过滤 disabled）
+    def _add(src):
+        if src not in disabled:
+            international_sources.append(src)
+
     domain_lower = domain.lower()
     if any(k in domain_lower for k in ["cs", "computer", "计算机", "ai", "machine"]):
-        international_sources.append("arxiv")
+        _add("arxiv")
     elif any(k in domain_lower for k in ["bio", "生物", "医学", "medicine", "pharmacology", "药"]):
-        international_sources.extend(["biorxiv", "medrxiv"])
+        _add("biorxiv"); _add("medrxiv")
     elif any(k in domain_lower for k in ["mechanical", "机械", "设备", "automation", "自动化", "manufacturing", "制造"]):
-        international_sources.append("arxiv")  # eess.SY / cs.RO / eess.SP for automation/robotics
+        _add("arxiv")
     elif any(k in domain_lower for k in ["physics", "物理", "math", "数学", "economics", "经济"]):
-        international_sources.append("arxiv")
+        _add("arxiv")
     else:
-        # 通用：都加上 arXiv
-        international_sources.append("arxiv")
+        _add("arxiv")
 
     # Phase 1: chinese_first 用国际来源（中文专用来源在 Phase 2 实现）
     if scope in ("chinese_first", "international"):

@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # Unpaywall
     unpaywall_email: str = "user@example.com"
 
+    # Lens.org 专利 API（免费，https://www.lens.org/lens/user/subscriptions 申请）
+    lens_api_token: str = ""
+
     # 应用
     debug: bool = False
     app_name: str = "URIP - 科研情报平台"

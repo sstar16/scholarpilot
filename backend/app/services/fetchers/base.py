@@ -153,6 +153,14 @@ class FetcherRegistry:
             "language": "en",
             "phase": 2,
         },
+        "lens_patent": {
+            "name": "Lens.org (全球专利)",
+            "description": "覆盖 CN/US/EP/WO/JP/KR 等 90+ 国家专利，需配置 LENS_API_TOKEN",
+            "doc_type": "patent",
+            "category": "patents",
+            "language": "multilingual",
+            "phase": 1,
+        },
         "cnipa": {
             "name": "CNIPA (中国专利)",
             "description": "中国国家知识产权局专利数据库",

@@ -17,8 +17,11 @@ class USPTOFetcher(AbstractFetcher):
     async def fetch(self, query: str, max_results=20, year_from=None, year_to=None, language=None) -> List[Dict]:
         papers = []
 
-        # 构建 PatentsView 查询
-        criteria = [{"_text_any": {"patent_abstract": query}}]
+        # 构建 PatentsView 查询：标题 + 摘要 双路搜索
+        criteria = [{"_or": [
+            {"_text_any": {"patent_title": query}},
+            {"_text_any": {"patent_abstract": query}},
+        ]}]
         if year_from:
             criteria.append({"_gte": {"patent_date": f"{year_from}-01-01"}})
         if year_to:

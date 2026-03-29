@@ -10,6 +10,7 @@ x-backend-env: &backend-env
   UNPAYWALL_EMAIL: ${UNPAYWALL_EMAIL:-}
   DEBUG: ${DEBUG:-false}
   DISABLED_SOURCES: ${DISABLED_SOURCES:-}
+  LENS_API_TOKEN: ${LENS_API_TOKEN:-}
 
 services:
   postgres:

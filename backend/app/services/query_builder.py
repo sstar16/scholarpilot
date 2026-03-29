@@ -182,16 +182,16 @@ DOMAIN_SOURCE_MAP = {
     "cs": ["arxiv"],
     "computer": ["arxiv"],
     "ai": ["arxiv"],
-    "biology": ["biorxiv", "medrxiv", "clinical_trials"],
-    "medicine": ["biorxiv", "medrxiv", "clinical_trials"],
-    "pharmacology": ["biorxiv", "medrxiv", "clinical_trials"],
-    "mechanical": ["arxiv", "uspto"],
-    "materials": ["arxiv", "uspto"],
-    "physics": ["arxiv"],
+    "biology": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent"],
+    "medicine": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent"],
+    "pharmacology": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent"],
+    "mechanical": ["arxiv", "uspto", "lens_patent"],
+    "materials": ["arxiv", "uspto", "lens_patent"],
+    "physics": ["arxiv", "lens_patent"],
     "math": ["arxiv"],
     "economics": ["arxiv"],
-    "chemistry": ["uspto"],
-    "environment": [],
+    "chemistry": ["uspto", "lens_patent"],
+    "environment": ["lens_patent"],
 }
 
 
@@ -226,8 +226,11 @@ def _select_sources(
 
     # 根据搜索配置启用专利/临床
     if search_config:
-        if search_config.get("enable_patents") and "uspto" not in sources and "uspto" not in disabled:
-            sources.append("uspto")
+        if search_config.get("enable_patents"):
+            if "uspto" not in sources and "uspto" not in disabled:
+                sources.append("uspto")
+            if "lens_patent" not in sources and "lens_patent" not in disabled:
+                sources.append("lens_patent")
         if search_config.get("enable_clinical_trials") and "clinical_trials" not in sources and "clinical_trials" not in disabled:
             sources.append("clinical_trials")
 

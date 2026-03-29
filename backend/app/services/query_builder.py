@@ -90,8 +90,8 @@ def _extract_core_query(description: str) -> str:
     # 保留较长的词作为关键词
     words = re.findall(r'[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}', text)
     meaningful = [w for w in words if w not in stop_words]
-    # 用前8个关键词构成查询
-    return " ".join(meaningful[:8]) if meaningful else text[:80]
+    # 用前4个关键词构成查询（短查询命中率更高）
+    return " ".join(meaningful[:4]) if meaningful else text[:40]
 
 
 def _is_mostly_chinese(text: str) -> bool:
@@ -124,11 +124,12 @@ async def _get_english_query(description: str, llm_manager) -> str:
                 import json as _json
                 keywords = _json.loads(match.group())
                 if keywords and isinstance(keywords, list) and len(keywords) >= 2:
-                    # Flatten all keyword phrases into individual words, keep max 8
+                    # Flatten all keyword phrases into individual words, keep max 4
+                    # Shorter queries have much higher hit rates on academic APIs
                     all_words = []
                     for kw in keywords:
                         all_words.extend(str(kw).split())
-                    query = " ".join(all_words[:8])
+                    query = " ".join(all_words[:4])
                     logger.debug("[QueryBuilder] LLM翻译查询: %s", query[:100])
                     return query
     except Exception as e:

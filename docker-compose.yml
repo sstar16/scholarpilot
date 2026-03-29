@@ -9,10 +9,6 @@ x-backend-env: &backend-env
   EXPORT_PATH: /app/data/exports
   UNPAYWALL_EMAIL: ${UNPAYWALL_EMAIL:-}
   DEBUG: ${DEBUG:-false}
-  HTTP_PROXY: ${HTTP_PROXY:-}
-  HTTPS_PROXY: ${HTTPS_PROXY:-}
-  http_proxy: ${HTTP_PROXY:-}
-  https_proxy: ${HTTP_PROXY:-}
   DISABLED_SOURCES: ${DISABLED_SOURCES:-}
 
 services:

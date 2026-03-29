@@ -92,6 +92,7 @@
                   :key="String(doc.id)"
                   :doc="doc"
                   :initial-feedback="searchStore.feedbackDrafts[String(doc.id)] ?? doc.user_feedback"
+                  :round-status="searchStore.currentRound?.status"
                   @feedback="(val) => searchStore.setFeedback(String(doc.id), val)"
                 />
               </div>

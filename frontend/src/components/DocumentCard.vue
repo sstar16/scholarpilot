@@ -40,6 +40,9 @@
           <el-icon><Link /></el-icon> {{ doc.ai_relevance_reason }}
         </div>
       </template>
+      <template v-else-if="roundDone">
+        <p class="no-summary">原文无摘要信息，暂无 AI 摘要</p>
+      </template>
       <template v-else>
         <el-skeleton :rows="3" animated />
       </template>
@@ -68,7 +71,12 @@ import { ref, computed, watch } from 'vue'
 const props = defineProps<{
   doc: any
   initialFeedback?: number | null
+  roundStatus?: string
 }>()
+
+const roundDone = computed(() =>
+  ['awaiting_feedback', 'completed'].includes(props.roundStatus ?? '')
+)
 
 const emit = defineEmits<{
   (e: 'feedback', value: number): void
@@ -160,6 +168,7 @@ function formatAuthors(authors: any) {
 .key-point { font-size: 13px; color: #606266; display: flex; align-items: flex-start; gap: 4px; }
 
 .relevance-reason { margin-top: 8px; font-size: 13px; color: var(--el-color-primary); display: flex; align-items: center; gap: 4px; }
+.no-summary { font-size: 13px; color: #c0c4cc; font-style: italic; margin: 4px 0 0; }
 
 .feedback-section { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f0f0f0; }
 .feedback-label { font-size: 13px; color: #606266; white-space: nowrap; }

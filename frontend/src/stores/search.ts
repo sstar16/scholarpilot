@@ -23,6 +23,10 @@ export const useSearchStore = defineStore('search', () => {
     if (res.data.length > 0) {
       const active = res.data.find((r: any) => r.status !== 'complete')
       currentRound.value = active ?? res.data[res.data.length - 1]
+      // Auto-start polling if a round is still running (e.g. after page refresh)
+      if (active && (active.status === 'running' || active.status === 'pending')) {
+        startPolling(pid, active.id)
+      }
     }
   }
 
@@ -88,6 +92,16 @@ export const useSearchStore = defineStore('search', () => {
     const res = await feedbackApi.submit(pid, roundId, feedbacks)
     Object.keys(feedbackDrafts).forEach(k => delete feedbackDrafts[k])
     documents.value = []
+
+    // Re-fetch rounds to discover the new round created by backend, then poll it
+    await fetchRounds(pid)
+    const newRound = rounds.value.find(
+      (r: any) => r.status === 'running' || r.status === 'pending'
+    )
+    if (newRound) {
+      startPolling(pid, newRound.id)
+    }
+
     return res.data
   }
 

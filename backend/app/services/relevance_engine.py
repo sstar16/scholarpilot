@@ -70,6 +70,7 @@ def select_top_documents(
     query_terms: List[str],
     max_select: int,
     exclude_terms: Optional[List[str]] = None,
+    min_return: int = 5,
 ) -> List[Dict]:
     """对候选文档打分并选出 top-N"""
     scored = []
@@ -80,9 +81,10 @@ def select_top_documents(
     # 按分数降序，同分按引用数降序
     scored.sort(key=lambda d: (d["_relevance_score"], d.get("citation_count", 0)), reverse=True)
 
-    # 过滤极低分（<0.05）
+    # 过滤极低分（<0.05），但至少保留 min_return 篇，防止全部被过滤
     relevant = [d for d in scored if d["_relevance_score"] >= 0.05]
-    print(f"[RelevanceEngine] 候选{len(scored)}篇, 过滤后{len(relevant)}篇, 分数分布: {[d['_relevance_score'] for d in scored[:5]]}")
+    if len(relevant) < min(min_return, len(scored)):
+        relevant = scored[:min(min_return, len(scored))]
     return relevant[:max_select]
 
 

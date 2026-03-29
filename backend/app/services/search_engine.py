@@ -3,8 +3,11 @@
 协调 fetchers + 去重 + 打分 + 选Top-N
 """
 import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from app.services.fetchers.international import ALL_FETCHERS
 from app.services.relevance_engine import select_top_documents, deduplicate_docs
@@ -29,7 +32,7 @@ async def execute_search(
             continue
         tasks.append(
             fetcher.safe_fetch(
-                query=" ".join(query_plan.expanded_terms),
+                query=query_plan.base_query,
                 max_results=query_plan.max_results_per_source,
                 year_from=query_plan.year_from,
                 year_to=query_plan.year_to,
@@ -46,7 +49,7 @@ async def execute_search(
     all_docs: List[Dict] = []
     for source_id, result in zip(task_sources, results):
         if isinstance(result, Exception):
-            print(f"[SearchEngine] {source_id} 异常: {result}")
+            logger.error("[SearchEngine] %s 异常: %s", source_id, result)
             continue
         _, docs = result
         all_docs.extend(docs)

@@ -2,9 +2,12 @@
 查询词构建器
 基于项目描述 + 用户画像，构建各轮次的实际查询词
 """
+import logging
 import re
 from dataclasses import dataclass
 from typing import List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 ROUND_CONFIGS = {
@@ -122,10 +125,10 @@ async def _get_english_query(description: str, llm_manager) -> str:
                 keywords = _json.loads(match.group())
                 if keywords and isinstance(keywords, list) and len(keywords) >= 2:
                     query = " ".join(str(k) for k in keywords[:6])
-                    print(f"[QueryBuilder] LLM翻译查询: {query[:100]}")
+                    logger.debug("[QueryBuilder] LLM翻译查询: %s", query[:100])
                     return query
     except Exception as e:
-        print(f"[QueryBuilder] LLM翻译失败，回退到原始提取: {e}")
+        logger.warning("[QueryBuilder] LLM翻译失败，回退到原始提取: %s", e)
 
     return _extract_core_query(description)
 

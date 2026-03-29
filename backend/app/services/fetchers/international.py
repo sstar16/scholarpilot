@@ -4,6 +4,8 @@
 新增：year_from/year_to 过滤，arXiv 数据源
 """
 import asyncio
+import traceback
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import httpx
@@ -29,6 +31,8 @@ class PubMedFetcher(AbstractFetcher):
             term += f" AND {year_from}:{year_to or datetime.now().year}[pdat]"
 
         articles = []
+        pmid_to_article: Dict[str, Dict] = {}
+
         async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT, proxy=None) as client:
             try:
                 r = await client.get(f"{PUBMED_BASE}/esearch.fcgi", params={
@@ -41,6 +45,7 @@ class PubMedFetcher(AbstractFetcher):
                 if not id_list:
                     return []
 
+                # Step 1: esummary for metadata (title, authors, journal, date)
                 for i in range(0, len(id_list), 50):
                     batch = id_list[i:i+50]
                     sr = await client.get(f"{PUBMED_BASE}/esummary.fcgi", params={
@@ -55,7 +60,7 @@ class PubMedFetcher(AbstractFetcher):
                                 authors = ", ".join([a.get("name", "") for a in authors_list[:5]])
                                 if len(authors_list) > 5:
                                     authors += " et al."
-                                articles.append({
+                                doc = {
                                     "source": "pubmed",
                                     "external_id": pmid,
                                     "doc_type": "paper",
@@ -67,10 +72,39 @@ class PubMedFetcher(AbstractFetcher):
                                     "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
                                     "abstract": None,
                                     "citation_count": 0,
-                                })
+                                }
+                                articles.append(doc)
+                                pmid_to_article[pmid] = doc
                     await asyncio.sleep(0.3)
+
+                # Step 2: efetch for abstracts (XML)
+                for i in range(0, len(id_list), 50):
+                    batch = id_list[i:i+50]
+                    er = await client.get(f"{PUBMED_BASE}/efetch.fcgi", params={
+                        "db": "pubmed", "id": ",".join(batch),
+                        "rettype": "xml", "retmode": "xml"
+                    })
+                    if er.status_code == 200:
+                        try:
+                            root = ET.fromstring(er.text)
+                            for pa in root.findall(".//PubmedArticle"):
+                                pmid_elem = pa.find(".//PMID")
+                                if pmid_elem is None:
+                                    continue
+                                pmid = pmid_elem.text
+                                # Collect all AbstractText sections (structured abstracts may have multiple)
+                                abstract_parts = [
+                                    elem.text for elem in pa.findall(".//AbstractText")
+                                    if elem.text
+                                ]
+                                if abstract_parts and pmid in pmid_to_article:
+                                    pmid_to_article[pmid]["abstract"] = " ".join(abstract_parts)
+                        except ET.ParseError:
+                            pass
+                    await asyncio.sleep(0.3)
+
             except Exception as e:
-                print(f"[PubMed] error: {e}")
+                print(f"[PubMed] {type(e).__name__}: {e}\n{traceback.format_exc()}")
         return articles[:max_results]
 
 
@@ -115,7 +149,7 @@ class OpenAlexFetcher(AbstractFetcher):
                             "pdf_url": (work.get("primary_location") or {}).get("pdf_url") if work.get("primary_location") else None,
                         })
             except Exception as e:
-                print(f"[OpenAlex] error: {e}")
+                print(f"[OpenAlex] {type(e).__name__}: {e}\n{traceback.format_exc()}")
         return papers[:max_results]
 
     def _reconstruct_abstract(self, inverted_index: Optional[Dict]) -> Optional[str]:
@@ -148,31 +182,38 @@ class SemanticScholarFetcher(AbstractFetcher):
 
         async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT, proxy=None) as client:
             try:
-                r = await client.get(f"{SEMANTIC_BASE}/paper/search", params=params, headers={"Accept": "application/json"})
-                if r.status_code == 200:
-                    for paper in r.json().get("data", []):
-                        authors = ", ".join([a.get("name", "") for a in paper.get("authors", [])[:5]])
-                        if len(paper.get("authors", [])) > 5:
-                            authors += " et al."
-                        ext = paper.get("externalIds", {})
-                        papers.append({
-                            "source": "semantic_scholar",
-                            "external_id": paper.get("paperId", ""),
-                            "doc_type": "paper",
-                            "title": paper.get("title", ""),
-                            "authors": authors,
-                            "abstract": paper.get("abstract"),
-                            "publication_date": paper.get("publicationDate"),
-                            "journal": (paper.get("journal") or {}).get("name") if paper.get("journal") else paper.get("venue"),
-                            "doi": ext.get("DOI"),
-                            "citation_count": paper.get("citationCount", 0),
-                            "pdf_url": (paper.get("openAccessPdf") or {}).get("url") if paper.get("openAccessPdf") else None,
-                            "url": f"https://www.semanticscholar.org/paper/{paper.get('paperId')}",
-                        })
-                elif r.status_code == 429:
-                    await asyncio.sleep(2)
+                for attempt in range(4):
+                    r = await client.get(f"{SEMANTIC_BASE}/paper/search", params=params, headers={"Accept": "application/json"})
+                    if r.status_code == 200:
+                        for paper in r.json().get("data", []):
+                            authors = ", ".join([a.get("name", "") for a in paper.get("authors", [])[:5]])
+                            if len(paper.get("authors", [])) > 5:
+                                authors += " et al."
+                            ext = paper.get("externalIds", {})
+                            papers.append({
+                                "source": "semantic_scholar",
+                                "external_id": paper.get("paperId", ""),
+                                "doc_type": "paper",
+                                "title": paper.get("title", ""),
+                                "authors": authors,
+                                "abstract": paper.get("abstract"),
+                                "publication_date": paper.get("publicationDate"),
+                                "journal": (paper.get("journal") or {}).get("name") if paper.get("journal") else paper.get("venue"),
+                                "doi": ext.get("DOI"),
+                                "citation_count": paper.get("citationCount", 0),
+                                "pdf_url": (paper.get("openAccessPdf") or {}).get("url") if paper.get("openAccessPdf") else None,
+                                "url": f"https://www.semanticscholar.org/paper/{paper.get('paperId')}",
+                            })
+                        break
+                    elif r.status_code == 429:
+                        delay = int(r.headers.get("Retry-After", 0)) or min(2 ** (attempt + 1), 30)
+                        print(f"[SemanticScholar] 429 rate limit, retry {attempt+1}/4 after {delay}s")
+                        await asyncio.sleep(delay)
+                    else:
+                        print(f"[SemanticScholar] HTTP {r.status_code}")
+                        break
             except Exception as e:
-                print(f"[Semantic Scholar] error: {e}")
+                print(f"[SemanticScholar] {type(e).__name__}: {e}\n{traceback.format_exc()}")
         return papers[:max_results]
 
 
@@ -212,7 +253,7 @@ class EuropePMCFetcher(AbstractFetcher):
                             "url": f"https://europepmc.org/article/MED/{item.get('pmid')}" if item.get("pmid") else None,
                         })
             except Exception as e:
-                print(f"[EuropePMC] error: {e}")
+                print(f"[EuropePMC] {type(e).__name__}: {e}\n{traceback.format_exc()}")
         return papers[:max_results]
 
 
@@ -236,7 +277,6 @@ class ArXivFetcher(AbstractFetcher):
             try:
                 r = await client.get(f"{ARXIV_BASE}/query", params=params)
                 if r.status_code == 200:
-                    import xml.etree.ElementTree as ET
                     ns = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
                     root = ET.fromstring(r.text)
                     for entry in root.findall("atom:entry", ns):
@@ -263,7 +303,7 @@ class ArXivFetcher(AbstractFetcher):
                             "url": f"https://arxiv.org/abs/{arxiv_id}",
                         })
             except Exception as e:
-                print(f"[arXiv] error: {e}")
+                print(f"[arXiv] {type(e).__name__}: {e}\n{traceback.format_exc()}")
         return papers[:max_results]
 
 
@@ -318,7 +358,7 @@ class BioRxivFetcher(AbstractFetcher):
                         break
                     await asyncio.sleep(0.2)
             except Exception as e:
-                print(f"[{self._server}] error: {e}")
+                print(f"[{self._server}] {type(e).__name__}: {e}\n{traceback.format_exc()}")
         return papers[:max_results]
 
 

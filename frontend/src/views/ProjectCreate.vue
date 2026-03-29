@@ -74,11 +74,11 @@
 
                   <el-table-column label="年份范围" min-width="130">
                     <template #default="{ row }">
-                      <el-select v-model="row.years" size="small" style="width:100%">
-                        <el-option label="近5年" :value="5" />
-                        <el-option label="近10年" :value="10" />
-                        <el-option label="近20年" :value="20" />
-                        <el-option label="全时间" :value="null" />
+                      <el-select v-model="row.yearsKey" size="small" style="width:100%">
+                        <el-option label="近5年" value="5" />
+                        <el-option label="近10年" value="10" />
+                        <el-option label="近20年" value="20" />
+                        <el-option label="全时间" value="all" />
                       </el-select>
                     </template>
                   </el-table-column>
@@ -173,13 +173,13 @@ const router = useRouter()
 const loading = ref(false)
 const activeCollapse = ref<string[]>([])
 
-// 默认每轮配置
+// 默认每轮配置（yearsKey 用字符串避免 el-select 数字绑定问题）
 const DEFAULT_ROUND_PRESETS = [
-  { years: 5,    scope: 'chinese_first', topK: 10,  topKAll: false },
-  { years: 10,   scope: 'chinese_first', topK: 10,  topKAll: false },
-  { years: 20,   scope: 'bilingual',     topK: 20,  topKAll: false },
-  { years: null, scope: 'bilingual',     topK: 50,  topKAll: false },
-  { years: null, scope: 'global',        topK: 100, topKAll: false },
+  { yearsKey: '5',   scope: 'chinese_first', topK: 10,  topKAll: false },
+  { yearsKey: '10',  scope: 'chinese_first', topK: 10,  topKAll: false },
+  { yearsKey: '20',  scope: 'bilingual',     topK: 20,  topKAll: false },
+  { yearsKey: 'all', scope: 'bilingual',     topK: 50,  topKAll: false },
+  { yearsKey: 'all', scope: 'global',        topK: 100, topKAll: false },
 ]
 
 function makeRoundConfig(index: number) {
@@ -187,7 +187,7 @@ function makeRoundConfig(index: number) {
   return { ...preset }
 }
 
-const roundConfigs = reactive<Array<{ years: number | null; scope: string; topK: number; topKAll: boolean }>>(
+const roundConfigs = reactive<Array<{ yearsKey: string; scope: string; topK: number; topKAll: boolean }>>(
   Array.from({ length: 5 }, (_, i) => makeRoundConfig(i))
 )
 
@@ -233,7 +233,7 @@ async function handleCreate() {
         recency: weights.recency / 100,
       },
       rounds: roundConfigs.map(r => ({
-        years: r.years,
+        years: r.yearsKey === 'all' ? null : parseInt(r.yearsKey),
         scope: r.scope,
         max_results: r.topKAll ? null : r.topK,
       })),

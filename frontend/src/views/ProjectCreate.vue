@@ -55,51 +55,74 @@
         <el-collapse v-model="activeCollapse" class="config-collapse">
           <el-collapse-item title="高级搜索配置" name="advanced">
             <div class="config-section">
+
+              <!-- 轮数控制 -->
               <el-form-item label="检索轮数">
-                <el-input-number v-model="form.maxRounds" :min="1" :max="10" />
-                <span class="config-hint">默认5轮，可根据需要增减</span>
+                <el-input-number v-model="form.maxRounds" :min="1" :max="10" @change="syncRoundRows" />
+                <span class="config-hint">调整轮数后下方表格自动更新</span>
               </el-form-item>
 
+              <!-- 每轮独立配置表格 -->
+              <div class="round-table-wrap">
+                <div class="round-table-title">每轮检索配置</div>
+                <el-table :data="roundConfigs" border size="small" class="round-table">
+                  <el-table-column label="轮次" width="60" align="center">
+                    <template #default="{ $index }">
+                      <span class="round-badge">第{{ $index + 1 }}轮</span>
+                    </template>
+                  </el-table-column>
+
+                  <el-table-column label="年份范围" min-width="130">
+                    <template #default="{ row }">
+                      <el-select v-model="row.years" size="small" style="width:100%">
+                        <el-option label="近5年" :value="5" />
+                        <el-option label="近10年" :value="10" />
+                        <el-option label="近20年" :value="20" />
+                        <el-option label="全时间" :value="null" />
+                      </el-select>
+                    </template>
+                  </el-table-column>
+
+                  <el-table-column label="语言优先" min-width="130">
+                    <template #default="{ row }">
+                      <el-select v-model="row.scope" size="small" style="width:100%">
+                        <el-option label="中文优先" value="chinese_first" />
+                        <el-option label="英文优先" value="english_first" />
+                        <el-option label="中英双语" value="bilingual" />
+                        <el-option label="全球多语言" value="global" />
+                      </el-select>
+                    </template>
+                  </el-table-column>
+
+                  <el-table-column label="返回数量" min-width="150">
+                    <template #default="{ row }">
+                      <div class="topk-cell">
+                        <el-input-number
+                          v-model="row.topK"
+                          :min="5" :max="500" :step="5"
+                          size="small"
+                          :disabled="row.topKAll"
+                          style="width:90px"
+                        />
+                        <el-checkbox v-model="row.topKAll" size="small">全部</el-checkbox>
+                      </div>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </div>
+
+              <!-- 数据源 -->
+              <el-divider content-position="left">数据源</el-divider>
               <el-form-item label="启用专利搜索">
                 <el-switch v-model="form.enablePatents" />
                 <span class="config-hint">搜索 USPTO 美国专利数据库</span>
               </el-form-item>
-
               <el-form-item label="启用临床试验搜索">
                 <el-switch v-model="form.enableClinicalTrials" />
                 <span class="config-hint">搜索 ClinicalTrials.gov 临床试验</span>
               </el-form-item>
 
-              <el-divider content-position="left">检索范围</el-divider>
-
-              <el-form-item label="年份策略">
-                <el-select v-model="form.yearStrategy" style="width:100%">
-                  <el-option label="逐步扩展（默认）：近5年→10年→20年→全时间" value="progressive" />
-                  <el-option label="固定：近5年" value="last5" />
-                  <el-option label="固定：近10年" value="last10" />
-                  <el-option label="固定：近20年" value="last20" />
-                  <el-option label="全时间" value="all" />
-                </el-select>
-              </el-form-item>
-
-              <el-form-item label="语言优先级">
-                <el-radio-group v-model="form.languageScope">
-                  <el-radio value="chinese_first">中文优先</el-radio>
-                  <el-radio value="english_first">英文优先</el-radio>
-                  <el-radio value="bilingual">中英双语</el-radio>
-                </el-radio-group>
-              </el-form-item>
-
-              <el-form-item label="每轮返回结果数">
-                <el-input-number
-                  v-model="form.topK"
-                  :min="5" :max="200" :step="5"
-                  :disabled="form.topKAll"
-                />
-                <el-checkbox v-model="form.topKAll" style="margin-left:16px">全部结果</el-checkbox>
-                <div class="config-hint">「全部结果」将返回所有检索到的文献并按综合评分排序</div>
-              </el-form-item>
-
+              <!-- 评分权重 -->
               <el-divider content-position="left">评分权重</el-divider>
               <div class="weight-sliders">
                 <div class="weight-row">
@@ -121,16 +144,12 @@
                   <el-text type="warning" size="small">权重之和应为100%（当前{{ weightSum }}%）</el-text>
                 </div>
               </div>
+
             </div>
           </el-collapse-item>
         </el-collapse>
 
-        <el-alert
-          type="info"
-          :closable="false"
-          show-icon
-          style="margin: 16px 0"
-        >
+        <el-alert type="info" :closable="false" show-icon style="margin: 16px 0">
           <template #title>
             AI 将分{{ form.maxRounds }}轮渐进式检索，每轮结束后您对结果评分，AI 据此优化下一轮的检索方向
           </template>
@@ -154,6 +173,24 @@ const router = useRouter()
 const loading = ref(false)
 const activeCollapse = ref<string[]>([])
 
+// 默认每轮配置
+const DEFAULT_ROUND_PRESETS = [
+  { years: 5,    scope: 'chinese_first', topK: 10,  topKAll: false },
+  { years: 10,   scope: 'chinese_first', topK: 10,  topKAll: false },
+  { years: 20,   scope: 'bilingual',     topK: 20,  topKAll: false },
+  { years: null, scope: 'bilingual',     topK: 50,  topKAll: false },
+  { years: null, scope: 'global',        topK: 100, topKAll: false },
+]
+
+function makeRoundConfig(index: number) {
+  const preset = DEFAULT_ROUND_PRESETS[index] ?? DEFAULT_ROUND_PRESETS[4]
+  return { ...preset }
+}
+
+const roundConfigs = reactive<Array<{ years: number | null; scope: string; topK: number; topKAll: boolean }>>(
+  Array.from({ length: 5 }, (_, i) => makeRoundConfig(i))
+)
+
 const form = reactive({
   title: '',
   description: '',
@@ -161,14 +198,19 @@ const form = reactive({
   maxRounds: 5,
   enablePatents: false,
   enableClinicalTrials: false,
-  yearStrategy: 'progressive',
-  languageScope: 'chinese_first',
-  topK: 10,
-  topKAll: false,
 })
 
 const weights = reactive({ keyword: 60, citation: 25, recency: 15 })
 const weightSum = computed(() => weights.keyword + weights.citation + weights.recency)
+
+function syncRoundRows(newMax: number) {
+  const cur = roundConfigs.length
+  if (newMax > cur) {
+    for (let i = cur; i < newMax; i++) roundConfigs.push(makeRoundConfig(i))
+  } else if (newMax < cur) {
+    roundConfigs.splice(newMax)
+  }
+}
 
 async function handleCreate() {
   if (!form.title || !form.description || form.domains.length === 0) {
@@ -182,23 +224,25 @@ async function handleCreate() {
 
   loading.value = true
   try {
-    const searchConfig: any = {
+    const searchConfig = {
       enable_patents: form.enablePatents,
       enable_clinical_trials: form.enableClinicalTrials,
-      year_strategy: form.yearStrategy,
-      language_scope: form.languageScope,
-      top_k: form.topKAll ? null : form.topK,
       scoring_weights: {
         keyword: weights.keyword / 100,
         citation: weights.citation / 100,
         recency: weights.recency / 100,
       },
+      rounds: roundConfigs.map(r => ({
+        years: r.years,
+        scope: r.scope,
+        max_results: r.topKAll ? null : r.topK,
+      })),
     }
 
     const res = await projectApi.create({
       title: form.title,
       description: form.description,
-      domain: form.domains[0],  // 向后兼容
+      domain: form.domains[0],
       domains: form.domains,
       max_rounds: form.maxRounds,
       search_config: searchConfig,
@@ -213,12 +257,19 @@ async function handleCreate() {
 </script>
 
 <style scoped>
-.create-wrap { max-width: 700px; margin: 32px auto; padding: 0 16px; }
+.create-wrap { max-width: 720px; margin: 32px auto; padding: 0 16px; }
 .card-header { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; }
 .hint { display: block; color: #909399; font-size: 12px; font-weight: normal; margin-top: 2px; }
 .config-collapse { margin-bottom: 8px; }
 .config-section { padding: 0 8px; }
 .config-hint { color: #909399; font-size: 12px; margin-left: 12px; }
+
+.round-table-wrap { margin-bottom: 16px; }
+.round-table-title { font-size: 13px; font-weight: 600; color: #606266; margin-bottom: 8px; }
+.round-table { width: 100%; }
+.round-badge { font-size: 12px; font-weight: 600; color: var(--el-color-primary); }
+.topk-cell { display: flex; align-items: center; gap: 8px; }
+
 .weight-sliders { margin-top: 8px; }
 .weight-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .weight-label { min-width: 100px; font-size: 14px; }

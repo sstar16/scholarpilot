@@ -42,7 +42,11 @@ def _get_round_config(round_number: int, search_config: Optional[Dict[str, Any]]
     if search_config and "rounds" in search_config:
         rounds = search_config["rounds"]
         if 0 < round_number <= len(rounds):
-            return rounds[round_number - 1]
+            cfg = dict(rounds[round_number - 1])
+            # max_results=null 表示"全部"，转为大数
+            if cfg.get("max_results") is None:
+                cfg["max_results"] = 500
+            return cfg
 
     base = dict(DEFAULT_ROUND_CONFIGS.get(round_number, DEFAULT_ROUND_CONFIGS[3]))
     if not search_config:

@@ -508,39 +508,68 @@ DELETE /api/llm/{provider_id}
 
 ## 十一、分阶段实施计划
 
-### Phase 1（第1-8周）— 核心渐进检索 MVP
+> **⚡ 当前状态（2026-03-27）**：Phase 1 核心功能已基本实现，正在进行 MVP 收尾冲刺。
+> **独立开发者，Deadline：2026-04-04（距今8天）**
 
-**目标**：可用的多轮搜索系统，AI摘要，用户反馈驱动画像，支持国际学术数据源
+---
 
-| 周 | 交付物 |
-|---|---|
-| 1-2 | Docker Compose 脚手架（FastAPI + PostgreSQL + Redis + Celery + Nginx），Alembic 迁移，JWT 认证，项目 CRUD |
-| 3-4 | 继承 v1 国际数据源，接入 RoundConfig（年份过滤），实现第1-3轮逻辑，新增 arXiv fetcher |
-| 5 | LLM 摘要服务：从 abstract 生成 AI 中文摘要（复用 llm_providers.py，支持用户自选 LLM） |
-| 6 | 反馈 API + profile_service（关键词偏好提取，暂无 embedding） |
-| 7 | Vue 3 前端：认证页、Dashboard、ProjectCreate 向导、SearchRoundView + DocumentCard + 反馈控件 |
-| 8 | 集成测试，生产 Docker Compose 配置，站内通知（WebSocket badge） |
+### MVP 冲刺计划（2026-03-27 → 2026-04-04）
 
-**Phase 1 不含**：专利检索、万方/百度学术、PDF全文下载、embedding打分、邮件/Telegram通知
+**目标**：4月4日前完成一个可以演示给客户的完整端到端流程，跑通全部4个测试用例。
 
-### Phase 2（第9-16周）— 中文生态 + 专利 + 监控
+#### 优先级分层
 
-| 周 | 交付物 |
-|---|---|
-| 9-10 | 万方 Open API + 百度学术爬虫（`fetchers/chinese.py`） |
-| 11-12 | USPTO PatentsView + CNIPA 专利检索（`fetchers/patents.py`） |
-| 13-14 | PDF 全文流水线：Unpaywall + pdfplumber（`fulltext_pipeline.py` + `fulltext_tasks.py`） |
-| 15 | pgvector embedding 计算 + hybrid scoring 上线（`relevance_engine.py` 升级） |
-| 16 | Celery-beat 每日监控任务 + 邮件通知 + Monitoring 前端页面 |
+**P0 — 必须完成（影响能否演示）**
 
-### Phase 3（第17-24周）— 全球检索 + 高级功能
+| 日期 | 任务 | 验收标准 |
+|------|------|---------|
+| 3-27 | ✅ 完整跑通第1轮检索（非燃烧香料） | 至少1篇文档，有AI摘要 |
+| 3-28 | 排查并修复 PubMed 报错（加详细日志） | worker 日志有明确错误信息，而非 `[PubMed] error:` |
+| 3-28 | Semantic Scholar 加指数退避重试 | 429 后自动重试，不直接放弃 |
+| 3-29 | 跑通4个测试用例各第1轮 | 每个用例均有 ≥3 篇文档 |
+| 3-30 | 清理所有调试 print（relevance_engine.py 等） | `grep -r "print(" backend/app/` 只剩必要日志 |
+| 3-31 | 完整走完一个项目的5轮+监控激活 | monitor_jobs 表有记录，Flower 显示 beat 任务 |
 
-| 周 | 交付物 |
-|---|---|
-| 17-18 | 第5轮全球检索：EPO OPS + WIPO + LLM 翻译外文摘要为中文 |
-| 19-20 | Telegram Bot + QQ Bot 通知（替代/补充邮件） |
-| 21-22 | 多用户协作：项目共享、团队通知、角色权限（owner/viewer） |
-| 23-24 | ECharts 分析看板（研究热点、关键词趋势、来源分布）+ Redis 缓存优化 |
+**P1 — 重要（影响演示质量）**
+
+| 日期 | 任务 |
+|------|------|
+| 4-01 | 优化 DocumentCard：评分后立刻视觉反馈，不等页面刷新 |
+| 4-01 | Settings 页 LLM 配置：加"测试连接"按钮（调 `/api/llm/test`）|
+| 4-02 | Dashboard 显示每个项目当前轮次进度和最近文档数 |
+| 4-02 | 错误处理：worker 任务失败时前端轮询到 `failed` 状态后展示原因 |
+
+**P2 — 时间允许时做**
+
+| 任务 |
+|------|
+| Unpaywall 集成（DOI → PDF 链接，需注册邮箱）|
+| 监控结果前端展示页（Monitoring.vue）|
+| 搜索结果数量过少时的提示（"建议扩大关键词范围"）|
+
+---
+
+### Phase 2（MVP 之后）— 中文生态 + 专利 + 全文
+
+**目标**：4月中旬开始，完成中文数据源和专利接入
+
+| 模块 | 交付物 |
+|------|--------|
+| 中文数据源 | 万方 Open API + 百度学术爬虫（`fetchers/chinese.py`） |
+| 专利 | USPTO PatentsView + CNIPA（`fetchers/patents.py`）|
+| 全文流水线 | Unpaywall + pdfplumber（`fulltext_pipeline.py`）|
+| 向量打分 | pgvector embedding + hybrid scoring（`relevance_engine.py` 升级）|
+| 通知 | 邮件通知 + Monitoring.vue 前端页面 |
+
+### Phase 3（后续）— 高级功能
+
+| 模块 | 交付物 |
+|------|--------|
+| 全球检索 | EPO OPS + WIPO + LLM 翻译外文摘要为中文 |
+| 智能分析 | 研究趋势检测、文献空白识别、查询词演化建议 |
+| 通知扩展 | Telegram Bot + QQ Bot |
+| 协作 | 项目共享、团队通知、角色权限 |
+| 看板 | ECharts 分析看板（研究热点、关键词趋势、来源分布）|
 
 ---
 

@@ -34,3 +34,6 @@ logs/
 
 # Claude Code 缓存
 .claude/
+
+# 专门学习的其他github项目
+other-projects/

@@ -3,10 +3,13 @@ Celery 定时任务：每日监控
 每天早6点自动检索，对照用户画像打分，高相关文档生成摘要后存入 monitor_results
 """
 import asyncio
+import logging
 import uuid
 from datetime import datetime, timezone, timedelta
 
 from app.workers.celery_app import app as celery_app
+
+logger = logging.getLogger(__name__)
 
 
 def _run_async(coro):
@@ -59,8 +62,7 @@ def run_single_monitor(self, job_id: str):
     try:
         return _run_async(_run_monitor_async(job_id))
     except Exception as e:
-        import traceback
-        print(f"[Monitor] 任务失败 job={job_id}: {e}\n{traceback.format_exc()}")
+        logger.error("[Monitor] 任务失败 job=%s: %s", job_id, e, exc_info=True)
         raise self.retry(exc=e, countdown=300)
 
 
@@ -129,7 +131,7 @@ async def _run_monitor_async(job_id_str: str):
             )
 
             # 3. 执行检索
-            all_docs, total = await execute_search(query_plan)
+            all_docs, total, _stats = await execute_search(query_plan)
             if not all_docs:
                 await _update_job_timestamps(job_id, now, db)
                 return {"status": "ok", "new_docs": 0, "total_candidates": total}
@@ -237,7 +239,7 @@ async def _run_monitor_async(job_id_str: str):
                     project_description=project.description,
                 )
 
-            print(f"[Monitor] job={job_id_str} 完成：发现 {len(top_docs)} 篇新文档（总候选 {total}）")
+            logger.info("[Monitor] job=%s 完成：发现 %d 篇新文档（总候选 %d）", job_id_str, len(top_docs), total)
             return {"status": "ok", "new_docs": len(top_docs), "total_candidates": total}
 
     finally:

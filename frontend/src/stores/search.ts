@@ -7,6 +7,7 @@ export const useSearchStore = defineStore('search', () => {
   const currentRound = ref<any>(null)
   const rounds = ref<any[]>([])
   const documents = ref<any[]>([])
+  const sourceStats = ref<Record<string, any>>({})
   // keyed by document_id (UUID string) → relevance score (-1/0/1/2)
   const feedbackDrafts = reactive<Record<string, number>>({})
   const loading = ref(false)
@@ -76,6 +77,7 @@ export const useSearchStore = defineStore('search', () => {
   async function loadRoundResults(roundId: string) {
     const res = await searchApi.getRoundResults(projectId.value, roundId)
     documents.value = res.data.documents ?? []
+    sourceStats.value = res.data.source_stats ?? {}
   }
 
   function setFeedback(docId: string, relevance: number) {
@@ -111,11 +113,12 @@ export const useSearchStore = defineStore('search', () => {
     currentRound.value = null
     rounds.value = []
     documents.value = []
+    sourceStats.value = {}
     Object.keys(feedbackDrafts).forEach(k => delete feedbackDrafts[k])
   }
 
   return {
-    currentRound, rounds, documents, feedbackDrafts, loading,
+    currentRound, rounds, documents, sourceStats, feedbackDrafts, loading,
     isStarting, ratedCount,
     fetchRounds, startRound, loadRoundResults, setFeedback, submitFeedback, reset,
   }

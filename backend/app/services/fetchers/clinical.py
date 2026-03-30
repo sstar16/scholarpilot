@@ -2,10 +2,12 @@
 临床试验数据源 Fetcher
 ClinicalTrials.gov API v2 — 免费，无需 API key
 """
-import traceback
+import logging
 from typing import Dict, List, Optional
 import httpx
 from app.services.fetchers.base import AbstractFetcher
+
+logger = logging.getLogger(__name__)
 
 CTGOV_BASE = "https://clinicaltrials.gov/api/v2/studies"
 
@@ -90,7 +92,7 @@ class ClinicalTrialsFetcher(AbstractFetcher):
                             "url": f"https://clinicaltrials.gov/study/{nct_id}" if nct_id else None,
                         })
                 else:
-                    print(f"[ClinicalTrials] HTTP {r.status_code}: {r.text[:200]}")
+                    logger.error("[ClinicalTrials] HTTP %d: %s", r.status_code, r.text[:200])
             except Exception as e:
-                print(f"[ClinicalTrials] {type(e).__name__}: {e}\n{traceback.format_exc()}")
+                logger.error("[ClinicalTrials] %s: %s", type(e).__name__, e, exc_info=True)
         return papers[:max_results]

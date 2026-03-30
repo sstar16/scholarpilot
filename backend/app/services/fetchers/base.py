@@ -3,9 +3,12 @@ AbstractFetcher 基类
 继承自 v1 的 _safe_fetch + asyncio.gather 模式
 """
 import asyncio
+import logging
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class AbstractFetcher(ABC):
@@ -56,11 +59,11 @@ class AbstractFetcher(ABC):
                     await asyncio.sleep(self.RETRY_DELAY)
             except Exception as e:
                 last_error = str(e)
-                print(f"[{self.source_id}] 第{attempt+1}次失败: {e}")
+                logger.warning("[%s] 第%d次失败: %s", self.source_id, attempt + 1, e)
                 if attempt < self.RETRY_COUNT:
                     await asyncio.sleep(self.RETRY_DELAY)
 
-        print(f"[{self.source_id}] 所有重试失败: {last_error}")
+        logger.error("[%s] 所有重试失败: %s", self.source_id, last_error)
         return (self.source_id, [])
 
     @staticmethod

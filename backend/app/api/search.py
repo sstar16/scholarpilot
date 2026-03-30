@@ -137,6 +137,7 @@ async def get_round_results(
         status=round_.status,
         documents=docs_out,
         total_candidates=round_.total_candidates,
+        source_stats=round_.source_stats,
     )
 
 

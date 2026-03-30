@@ -3,10 +3,12 @@ Lens.org 专利 Fetcher
 覆盖范围：CN（中国）/ US（美国）/ EP（欧洲）/ WO（PCT国际）/ JP / KR 等 90+ 国家
 免费账号：https://www.lens.org/lens/user/subscriptions → 申请 Scholarly API token
 """
-import traceback
+import logging
 from typing import Dict, List
 import httpx
 from app.services.fetchers.base import AbstractFetcher
+
+logger = logging.getLogger(__name__)
 
 LENS_API_URL = "https://api.lens.org/patent/search"
 
@@ -28,7 +30,8 @@ class LensPatentFetcher(AbstractFetcher):
         from app.config import settings
         token = getattr(settings, "lens_api_token", "").strip()
         if not token:
-            return []  # 未配置 token，跳过
+            logger.warning("[Lens] LENS_API_TOKEN 未配置，跳过专利检索")
+            return []
 
         # 构建 bool query：标题 + 摘要 + 权利要求 三路搜索
         must_clauses = [{
@@ -118,12 +121,12 @@ class LensPatentFetcher(AbstractFetcher):
                             "url": url,
                         })
                 elif r.status_code == 401:
-                    print("[Lens] 401 Unauthorized：LENS_TOKEN 无效或已过期")
+                    logger.error("[Lens] 401 Unauthorized：LENS_API_TOKEN 无效或已过期")
                 elif r.status_code == 429:
-                    print("[Lens] 429 Rate limited：免费额度已用完（10000次/月）")
+                    logger.error("[Lens] 429 Rate limited：免费额度已用完（10000次/月）")
                 else:
-                    print(f"[Lens] HTTP {r.status_code}: {r.text[:200]}")
+                    logger.error("[Lens] HTTP %d: %s", r.status_code, r.text[:200])
             except Exception as e:
-                print(f"[Lens] {type(e).__name__}: {e}\n{traceback.format_exc()}")
+                logger.error("[Lens] %s: %s", type(e).__name__, e, exc_info=True)
 
         return papers[:max_results]

@@ -129,8 +129,19 @@ Celery Beat 每天早6点:
 
 ### Git
 
-- 分支：直接提交到 `feat/mvp-bugfix-and-run`，不再走 worktree 分支 merge（2026-03-29 起）
+- **当前开发分支**：`feat/phase2-revision-knowledge`（Phase 2 起，2026-03-30）
+- **生产目录**：`D:\AI\scholarpilot`（用户正在使用，不要随便 `git pull`）
+- **开发目录**：`D:\AI\scholarpilot-dev`（本文件所在，Phase 2 开发在这里进行）
 - Commit 格式：`feat:` / `fix:` / `refactor:` / `docs:` / `chore:`
+
+### 双环境管理（重要）
+
+- **生产和开发用两个独立目录**，不能用 docker-compose override 来隔离——因为 volume 挂载的代码路径相同，改代码会同时影响两个容器。
+- **端口隔离**：生产占用 80/5555，开发在服务器上用 `docker-compose.override.yml` 覆盖为 8080/5556，此文件已加入 `.gitignore` 不提交。
+- **卷隔离**：Docker Compose 项目名默认取目录名。`prod/` 目录的卷是 `prod_pgdata`，`dev/` 的卷是 `dev_pgdata`，天然不同，数据不会串。
+- **cloudflared 只走 80 端口**：`cloudflared tunnel --url http://localhost` 只指向 80，不会暴露开发环境（8080）。
+- **在生产目录误操作 git pull**：用 `git reset --hard <上一个commit hash>` 回退，然后 `docker-compose restart backend worker`。
+- **访问服务器开发环境**：用 SSH 隧道 `ssh -L 8080:localhost:8080 deploy@<IP>`，不对外开放 8080 端口。
 
 ### el-table 内 el-select 的值绑定
 

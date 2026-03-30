@@ -60,6 +60,22 @@
 
             <!-- Results + feedback -->
             <template v-else-if="currentRound?.status === 'awaiting_feedback' || currentRound?.status === 'complete'">
+              <!-- Source stats summary -->
+              <div v-if="searchStore.sourceStats && Object.keys(searchStore.sourceStats).length > 0" class="source-stats">
+                <span class="source-stats-label">数据源：</span>
+                <el-tag
+                  v-for="(stat, sourceId) in searchStore.sourceStats"
+                  :key="sourceId"
+                  :type="stat.status === 'ok' && stat.count > 0 ? 'success' : stat.status === 'error' ? 'danger' : 'info'"
+                  size="small"
+                  effect="plain"
+                  style="margin-right: 6px; margin-bottom: 4px"
+                >
+                  {{ sourceId }}: {{ stat.count ?? 0 }}篇
+                  <span v-if="stat.status === 'error'" style="color: #f56c6c"> (错误)</span>
+                </el-tag>
+              </div>
+
               <el-alert
                 v-if="currentRound?.status === 'awaiting_feedback'"
                 type="info"
@@ -276,6 +292,15 @@ onMounted(async () => {
 }
 
 .doc-list { display: flex; flex-direction: column; gap: 16px; }
+
+.source-stats {
+  display: flex; flex-wrap: wrap; align-items: center;
+  margin-bottom: 12px; padding: 8px 12px;
+  background: #fff; border-radius: 6px; border: 1px solid #e4e7ed;
+}
+.source-stats-label {
+  font-size: 13px; color: #909399; margin-right: 8px; white-space: nowrap;
+}
 
 .next-round-panel { margin-top: 24px; }
 </style>

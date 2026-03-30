@@ -3,9 +3,12 @@ Celery 任务：执行单轮渐进式检索
 流程：检索 → 保存文档 → 生成 AI 摘要 → chord callback 更新状态
 """
 import asyncio
+import logging
 import uuid
 from celery import chord, group
 from app.workers.celery_app import app as celery_app
+
+logger = logging.getLogger(__name__)
 
 
 def _run_async(coro):
@@ -106,22 +109,39 @@ async def _execute_round_async(round_id_str: str):
             )
 
             # 5. 执行并行检索（传入跨轮去重集合和评分权重）
-            selected_docs, total_candidates = await execute_search(
+            selected_docs, total_candidates, source_stats = await execute_search(
                 query_plan,
                 exclude_doc_keys=exclude_keys if exclude_keys else None,
                 scoring_weights=scoring_weights,
             )
 
-            # 5. 保存文档到数据库
-            await save_round_documents(round_id, selected_docs, db)
+            # 5b. LLM Reranking（可选，通过 search_config.enable_llm_rerank 开关）
+            if selected_docs and project.search_config and project.search_config.get("enable_llm_rerank"):
+                from app.services.llm_reranker import llm_rerank
+                selected_docs = await llm_rerank(
+                    docs=selected_docs,
+                    project_description=project.description,
+                    llm_manager=llm_manager,
+                )
 
-            # 6. 若无文档则直接进入等待反馈
+            # 6. 若无文档则直接进入等待反馈（也保存 source_stats）
             if not selected_docs:
+                from sqlalchemy import update as sql_update
+                await db.execute(
+                    sql_update(SearchRound).where(SearchRound.id == round_id).values(
+                        source_stats=source_stats,
+                        total_candidates=total_candidates,
+                    )
+                )
+                await db.commit()
                 await mark_round_awaiting_feedback(round_id, db)
                 return {"round_id": round_id_str, "selected": 0, "total": total_candidates}
 
-            # 7. 标记为摘要生成中
-            await mark_round_summarizing(round_id, total_candidates, len(selected_docs), db)
+            # 7. 保存文档到数据库
+            await save_round_documents(round_id, selected_docs, db)
+
+            # 8. 标记为摘要生成中（含数据源统计）
+            await mark_round_summarizing(round_id, total_candidates, len(selected_docs), db, source_stats=source_stats)
 
             # 8. 使用 Celery chord：所有摘要子任务完成后触发 finalize 回调
             summary_tasks = []
@@ -143,8 +163,7 @@ async def _execute_round_async(round_id_str: str):
             return {"round_id": round_id_str, "selected": len(selected_docs), "total": total_candidates}
 
         except Exception as e:
-            import traceback
-            print(f"[execute_round] 错误: {e}\n{traceback.format_exc()}")
+            logger.error("[execute_round] 错误: %s", e, exc_info=True)
             # 标记失败
             from sqlalchemy import update
             from app.models.search_round import SearchRound
@@ -166,7 +185,7 @@ def generate_summary_for_doc(self, round_id_str: str, source: str, external_id: 
         return _run_async(_generate_summary_async(round_id_str, source, external_id, project_description))
     except Exception as e:
         # 捕获所有异常，返回错误信息而非抛出，避免 chord 因单个子任务失败而中断
-        print(f"[generate_summary_for_doc] 失败 source={source} external_id={external_id}: {e}")
+        logger.error("[generate_summary_for_doc] 失败 source=%s external_id=%s: %s", source, external_id, e)
         return {"status": "failed", "error": str(e)}
 
 
@@ -267,7 +286,7 @@ async def _finalize_round_async(round_id_str: str):
             )
             done_count = done.scalar()
 
-            print(f"[finalize_round] round={round_id_str} 摘要完成 {done_count}/{total_count}")
+            logger.info("[finalize_round] round=%s 摘要完成 %d/%d", round_id_str, done_count, total_count)
 
             # 无论摘要是否全部成功，都转入 awaiting_feedback（用户可以看到哪些有摘要哪些没有）
             await db.execute(

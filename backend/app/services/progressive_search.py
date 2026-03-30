@@ -54,15 +54,24 @@ async def mark_round_searching(round_id: uuid.UUID, db: AsyncSession):
     await db.commit()
 
 
-async def mark_round_summarizing(round_id: uuid.UUID, total_candidates: int, selected_count: int, db: AsyncSession):
+async def mark_round_summarizing(
+    round_id: uuid.UUID,
+    total_candidates: int,
+    selected_count: int,
+    db: AsyncSession,
+    source_stats: Optional[Dict] = None,
+):
+    values = dict(
+        status="summarizing",
+        total_candidates=total_candidates,
+        selected_count=selected_count,
+        progress=0.6,
+        progress_message=f"已检索到 {total_candidates} 篇，AI 正在生成摘要...",
+    )
+    if source_stats is not None:
+        values["source_stats"] = source_stats
     await db.execute(
-        update(SearchRound).where(SearchRound.id == round_id).values(
-            status="summarizing",
-            total_candidates=total_candidates,
-            selected_count=selected_count,
-            progress=0.6,
-            progress_message=f"已检索到 {total_candidates} 篇，AI 正在生成摘要...",
-        )
+        update(SearchRound).where(SearchRound.id == round_id).values(**values)
     )
     await db.commit()
 

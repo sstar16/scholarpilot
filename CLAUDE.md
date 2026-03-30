@@ -164,7 +164,17 @@ cloudflared tunnel --url http://localhost
 - 免费试用：[lens.org/lens/user/subscriptions](https://www.lens.org/lens/user/subscriptions) → Patent API → Trial Access
 - 配置：`.env` 中填 `LENS_API_TOKEN=<token>`
 - 覆盖：CN/US/EP/WO/JP/KR 等 90+ 国家，1.6亿+ 专利记录
-- Token 未配置时 `LensPatentFetcher.fetch()` 直接返回 `[]`，不报错
+- Token 未配置时 `LensPatentFetcher.fetch()` 返回 `[]` 并记录 `logger.warning`
+
+### 评分引擎 v2（2026-03-30）
+
+- **keyword_score** 升级：同义词扩展（`SYNONYM_MAP`）、词干级部分匹配、IDF 加权（批次内高频词降权）、无摘要文档 ×0.7 降权
+- **元数据补全链**（`metadata_enricher.py`）：缺少 abstract 的文档自动从 OpenAlex/Crossref 补全，每轮最多 10 篇
+- **LLM Reranking**（可选）：通过 `search_config.enable_llm_rerank: true` 启用，对 top-20 文档用 LLM 做二次排序
+- **跨源去重增强**：DOI 相同的文档自动合并为元数据最完整版本
+- **0 篇保底**：`execute_search` 返回空时自动放宽条件（忽略跨轮去重）重试；`exclude_terms` 命中 >80% 文档时自动忽略
+- **可观测性**：`SearchRound.source_stats` JSON 列记录各数据源返回统计，前端展示数据源贡献
+- **日志统一**：所有 fetcher 和 worker 使用 `logging.getLogger(__name__)` 替代 `print`
 
 ## Phase 规划
 

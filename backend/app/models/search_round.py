@@ -28,6 +28,7 @@ class SearchRound(Base):
     # 结果统计
     total_candidates: Mapped[int] = mapped_column(Integer, default=0)
     selected_count: Mapped[int] = mapped_column(Integer, default=0)
+    source_stats: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # 各数据源返回统计
 
     # 进度（供前端轮询）
     progress: Mapped[float] = mapped_column(default=0.0)

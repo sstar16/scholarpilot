@@ -168,9 +168,18 @@ async def _get_english_query(description: str, llm_manager) -> str:
                     all_words = []
                     for kw in keywords:
                         all_words.extend(str(kw).split())
-                    query = " ".join(all_words[:4])
-                    logger.debug("[QueryBuilder] LLM翻译查询: %s", query[:100])
-                    return query
+                    # 过滤掉过短的词
+                    all_words = [w for w in all_words if len(w) >= 2]
+                    if len(all_words) >= 3:
+                        query = " ".join(all_words[:8])
+                        logger.debug("[QueryBuilder] LLM翻译查询: %s", query[:100])
+                        return query
+                    else:
+                        # 翻译结果有效词太少，追加原始中文核心词
+                        fallback = _extract_core_query(description)
+                        combined = " ".join(all_words + fallback.split())
+                        logger.warning("[QueryBuilder] LLM翻译词过少(%d)，补充中文核心词: %s", len(all_words), combined[:100])
+                        return combined
     except Exception as e:
         logger.warning("[QueryBuilder] LLM翻译失败，回退到原始提取: %s", e)
 

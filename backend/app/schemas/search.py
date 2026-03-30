@@ -15,6 +15,7 @@ class RoundStatusOut(BaseModel):
     language_scope: str
     total_candidates: int
     selected_count: int
+    source_stats: Optional[dict] = None
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
 
@@ -58,3 +59,4 @@ class RoundResultsOut(BaseModel):
     status: str
     documents: List[DocumentOut]
     total_candidates: int
+    source_stats: Optional[dict] = None

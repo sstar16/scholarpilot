@@ -3,10 +3,12 @@ Crossref 数据源 Fetcher
 免费学术文献元数据 API，1.3亿+ 记录
 polite 模式需 mailto 参数获得更高限额
 """
-import traceback
+import logging
 from typing import Dict, List, Optional
 import httpx
 from app.services.fetchers.base import AbstractFetcher
+
+logger = logging.getLogger(__name__)
 
 CROSSREF_BASE = "https://api.crossref.org/works"
 
@@ -98,7 +100,7 @@ class CrossrefFetcher(AbstractFetcher):
                             "url": item.get("URL") or (f"https://doi.org/{doi}" if doi else None),
                         })
                 else:
-                    print(f"[Crossref] HTTP {r.status_code}: {r.text[:200]}")
+                    logger.error("[Crossref] HTTP %d: %s", r.status_code, r.text[:200])
             except Exception as e:
-                print(f"[Crossref] {type(e).__name__}: {e}\n{traceback.format_exc()}")
+                logger.error("[Crossref] %s: %s", type(e).__name__, e, exc_info=True)
         return papers[:max_results]

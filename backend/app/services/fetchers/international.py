@@ -4,12 +4,14 @@
 新增：year_from/year_to 过滤，arXiv 数据源
 """
 import asyncio
-import traceback
+import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import httpx
 from app.services.fetchers.base import AbstractFetcher
+
+logger = logging.getLogger(__name__)
 
 
 PUBMED_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
@@ -104,7 +106,7 @@ class PubMedFetcher(AbstractFetcher):
                     await asyncio.sleep(0.3)
 
             except Exception as e:
-                print(f"[PubMed] {type(e).__name__}: {e}\n{traceback.format_exc()}")
+                logger.error("[PubMed] %s: %s", type(e).__name__, e, exc_info=True)
         return articles[:max_results]
 
 
@@ -149,7 +151,7 @@ class OpenAlexFetcher(AbstractFetcher):
                             "pdf_url": (work.get("primary_location") or {}).get("pdf_url") if work.get("primary_location") else None,
                         })
             except Exception as e:
-                print(f"[OpenAlex] {type(e).__name__}: {e}\n{traceback.format_exc()}")
+                logger.error("[OpenAlex] %s: %s", type(e).__name__, e, exc_info=True)
         return papers[:max_results]
 
     def _reconstruct_abstract(self, inverted_index: Optional[Dict]) -> Optional[str]:
@@ -207,13 +209,13 @@ class SemanticScholarFetcher(AbstractFetcher):
                         break
                     elif r.status_code == 429:
                         delay = int(r.headers.get("Retry-After", 0)) or min(2 ** (attempt + 1), 30)
-                        print(f"[SemanticScholar] 429 rate limit, retry {attempt+1}/4 after {delay}s")
+                        logger.warning("[SemanticScholar] 429 rate limit, retry %d/4 after %ds", attempt + 1, delay)
                         await asyncio.sleep(delay)
                     else:
-                        print(f"[SemanticScholar] HTTP {r.status_code}")
+                        logger.error("[SemanticScholar] HTTP %d", r.status_code)
                         break
             except Exception as e:
-                print(f"[SemanticScholar] {type(e).__name__}: {e}\n{traceback.format_exc()}")
+                logger.error("[SemanticScholar] %s: %s", type(e).__name__, e, exc_info=True)
         return papers[:max_results]
 
 
@@ -253,7 +255,7 @@ class EuropePMCFetcher(AbstractFetcher):
                             "url": f"https://europepmc.org/article/MED/{item.get('pmid')}" if item.get("pmid") else None,
                         })
             except Exception as e:
-                print(f"[EuropePMC] {type(e).__name__}: {e}\n{traceback.format_exc()}")
+                logger.error("[EuropePMC] %s: %s", type(e).__name__, e, exc_info=True)
         return papers[:max_results]
 
 
@@ -303,7 +305,7 @@ class ArXivFetcher(AbstractFetcher):
                             "url": f"https://arxiv.org/abs/{arxiv_id}",
                         })
             except Exception as e:
-                print(f"[arXiv] {type(e).__name__}: {e}\n{traceback.format_exc()}")
+                logger.error("[arXiv] %s: %s", type(e).__name__, e, exc_info=True)
         return papers[:max_results]
 
 
@@ -358,7 +360,7 @@ class BioRxivFetcher(AbstractFetcher):
                         break
                     await asyncio.sleep(0.2)
             except Exception as e:
-                print(f"[{self._server}] {type(e).__name__}: {e}\n{traceback.format_exc()}")
+                logger.error("[%s] %s: %s", self._server, type(e).__name__, e, exc_info=True)
         return papers[:max_results]
 
 

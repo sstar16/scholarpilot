@@ -2,10 +2,12 @@
 专利数据源 Fetcher
 USPTO PatentsView API — 免费，无需 API key
 """
-import traceback
+import logging
 from typing import Dict, List, Optional
 import httpx
 from app.services.fetchers.base import AbstractFetcher
+
+logger = logging.getLogger(__name__)
 
 PATENTSVIEW_BASE = "https://api.patentsview.org/patents/query"
 
@@ -80,7 +82,7 @@ class USPTOFetcher(AbstractFetcher):
                             "url": f"https://patents.google.com/patent/US{patent_num}" if patent_num else None,
                         })
                 else:
-                    print(f"[USPTO] HTTP {r.status_code}: {r.text[:200]}")
+                    logger.error("[USPTO] HTTP %d: %s", r.status_code, r.text[:200])
             except Exception as e:
-                print(f"[USPTO] {type(e).__name__}: {e}\n{traceback.format_exc()}")
+                logger.error("[USPTO] %s: %s", type(e).__name__, e, exc_info=True)
         return papers[:max_results]

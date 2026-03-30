@@ -143,6 +143,26 @@ Celery Beat 每天早6点:
 - **在生产目录误操作 git pull**：用 `git reset --hard <上一个commit hash>` 回退，然后 `docker-compose restart backend worker`。
 - **访问服务器开发环境**：用 SSH 隧道 `ssh -L 8080:localhost:8080 deploy@<IP>`，不对外开放 8080 端口。
 
+### 服务器部署注意事项（2026-03-30 首次部署）
+
+- **服务器**：阿里云轻量 2C2G，IP `8.138.174.28`，到期 2026-05-01，生产代码在 `/opt/scholarpilot/prod/`
+- **内存只有 2 GiB**：必须先建 Swap：`fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab`
+- **阿里云 Linux 无 `sudo` 组**：普通用户加入 `wheel` 组，不是 `sudo` 组
+- **Dockerfile 国内加速**（必须，否则 apt-get 要 50 分钟以上）：
+  ```dockerfile
+  # apt 换阿里云源（在 apt-get update 前加）
+  RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true && \
+      apt-get update && apt-get install -y ...
+  # pip 换清华源
+  RUN pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+  # npm 换 npmmirror
+  RUN npm install --registry=https://registry.npmmirror.com
+  ```
+- **Dockerfile 编辑踩坑**：VS Code 粘贴长行会自动换行导致 `unknown instruction` 错误；必须手动逐行修改，不能整段粘贴含长命令的内容
+- **关闭公开注册**：nginx 加 `location = /api/auth/register { return 403 '{"detail":"注册已关闭"}'; add_header Content-Type application/json; }`，放在 `location /api/` 前面
+- **Flower 不能暴露公网**：`docker-compose.yml` 中 flower 用 `expose` 而不是 `ports`
+- **内测账号**：beta01~beta10@test.com，密码 Scholar2026#01~#10，注册已关闭
+
 ### el-table 内 el-select 的值绑定
 
 - **问题**：`el-table` scoped slot 内，`el-select` 使用 `:value="10"`（数字）时，v-model 绑定失效——所有行都显示第一个选项。

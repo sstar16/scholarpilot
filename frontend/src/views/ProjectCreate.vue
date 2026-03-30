@@ -112,14 +112,15 @@
               </div>
 
               <!-- 数据源 -->
-              <el-divider content-position="left">数据源</el-divider>
-              <el-form-item label="启用专利搜索">
-                <el-switch v-model="form.enablePatents" />
-                <span class="config-hint">搜索 USPTO 美国专利数据库</span>
-              </el-form-item>
-              <el-form-item label="启用临床试验搜索">
-                <el-switch v-model="form.enableClinicalTrials" />
-                <span class="config-hint">搜索 ClinicalTrials.gov 临床试验</span>
+              <el-divider content-position="left">数据源（默认全部开启）</el-divider>
+              <el-form-item label=" ">
+                <div class="source-grid">
+                  <div v-for="src in ALL_SOURCES" :key="src.id" class="source-item">
+                    <el-switch :model-value="!form.disabledSources.includes(src.id)" @update:model-value="toggleSource(src.id, $event)" size="small" />
+                    <span class="source-label">{{ src.label }}</span>
+                    <span class="source-desc">{{ src.desc }}</span>
+                  </div>
+                </div>
               </el-form-item>
 
               <!-- 评分权重 -->
@@ -191,14 +192,34 @@ const roundConfigs = reactive<Array<{ yearsKey: string; scope: string; topK: num
   Array.from({ length: 5 }, (_, i) => makeRoundConfig(i))
 )
 
+const ALL_SOURCES = [
+  { id: 'openalex',         label: 'OpenAlex',            desc: '国际综合文献库' },
+  { id: 'europe_pmc',       label: 'Europe PMC',          desc: '生物医学全文' },
+  { id: 'crossref',         label: 'Crossref',            desc: '期刊引用数据' },
+  { id: 'semantic_scholar', label: 'Semantic Scholar',    desc: 'AI语义检索' },
+  { id: 'arxiv',            label: 'arXiv',               desc: '物理/CS/数学预印本' },
+  { id: 'biorxiv',          label: 'bioRxiv',             desc: '生物预印本' },
+  { id: 'medrxiv',          label: 'medRxiv',             desc: '医学预印本' },
+  { id: 'lens_patent',      label: 'Lens.org 专利',       desc: '全球专利 CN/US/EP/WO' },
+  { id: 'clinical_trials',  label: 'ClinicalTrials.gov',  desc: '临床试验注册' },
+]
+
 const form = reactive({
   title: '',
   description: '',
   domains: [] as string[],
   maxRounds: 5,
-  enablePatents: false,
-  enableClinicalTrials: false,
+  disabledSources: [] as string[],
 })
+
+function toggleSource(id: string, enabled: boolean) {
+  if (enabled) {
+    const idx = form.disabledSources.indexOf(id)
+    if (idx !== -1) form.disabledSources.splice(idx, 1)
+  } else {
+    if (!form.disabledSources.includes(id)) form.disabledSources.push(id)
+  }
+}
 
 const weights = reactive({ keyword: 60, citation: 25, recency: 15 })
 const weightSum = computed(() => weights.keyword + weights.citation + weights.recency)
@@ -225,8 +246,7 @@ async function handleCreate() {
   loading.value = true
   try {
     const searchConfig = {
-      enable_patents: form.enablePatents,
-      enable_clinical_trials: form.enableClinicalTrials,
+      disabled_sources: [...form.disabledSources],
       scoring_weights: {
         keyword: weights.keyword / 100,
         citation: weights.citation / 100,
@@ -276,4 +296,9 @@ async function handleCreate() {
 .weight-row .el-slider { flex: 1; }
 .weight-value { min-width: 40px; text-align: right; font-size: 14px; color: #606266; }
 .weight-warning { margin-top: 4px; }
+
+.source-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 16px; }
+.source-item { display: flex; align-items: center; gap: 6px; }
+.source-label { font-size: 13px; font-weight: 500; white-space: nowrap; }
+.source-desc { font-size: 11px; color: #909399; }
 </style>

@@ -233,15 +233,22 @@ def _select_sources(
     if not added and "arxiv" not in disabled:
         sources.append("arxiv")
 
-    # 根据搜索配置启用专利/临床
+    # 始终尝试加入专利和临床试验来源
+    for extra in ["lens_patent", "clinical_trials"]:
+        if extra not in sources and extra not in disabled:
+            sources.append(extra)
+
+    # 兼容旧字段：enable_patents/enable_clinical_trials 明确为 False 时排除
     if search_config:
-        if search_config.get("enable_patents"):
-            if "uspto" not in sources and "uspto" not in disabled:
-                sources.append("uspto")
-            if "lens_patent" not in sources and "lens_patent" not in disabled:
-                sources.append("lens_patent")
-        if search_config.get("enable_clinical_trials") and "clinical_trials" not in sources and "clinical_trials" not in disabled:
-            sources.append("clinical_trials")
+        if search_config.get("enable_patents") is False and "disabled_sources" not in search_config:
+            sources = [s for s in sources if s not in ("lens_patent", "uspto")]
+        if search_config.get("enable_clinical_trials") is False and "disabled_sources" not in search_config:
+            sources = [s for s in sources if s != "clinical_trials"]
+
+    # 按 search_config.disabled_sources 做精细过滤（优先级高于旧字段）
+    if search_config:
+        user_disabled = {s.strip() for s in search_config.get("disabled_sources", []) if s}
+        sources = [s for s in sources if s not in user_disabled]
 
     # 优先使用用户偏好来源
     if preferred_sources and round_number > 1:

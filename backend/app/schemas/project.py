@@ -18,8 +18,7 @@ DEFAULT_SEARCH_CONFIG = {
         "citation": 0.25,
         "recency": 0.15,
     },
-    "enable_patents": False,
-    "enable_clinical_trials": False,
+    "disabled_sources": [],
 }
 
 

@@ -14,8 +14,29 @@
             <span class="project-domain">{{ (project.domains || [project.domain]).join(' · ') }}</span>
           </div>
         </div>
-        <el-tag :type="statusType(project.status)" size="large">{{ statusLabel(project.status) }}</el-tag>
+        <div style="display:flex;align-items:center;gap:10px">
+          <el-button size="small" @click="openSettings"><el-icon><Setting /></el-icon> 搜索设置</el-button>
+          <el-tag :type="statusType(project.status)" size="large">{{ statusLabel(project.status) }}</el-tag>
+        </div>
       </div>
+
+      <!-- Settings dialog -->
+      <el-dialog v-model="settingsVisible" title="数据源设置" width="480px" :close-on-click-modal="false">
+        <p style="font-size:13px;color:#909399;margin:0 0 12px">默认全部开启；关闭的数据源在下一轮检索中生效</p>
+        <div class="settings-source-grid">
+          <div v-for="src in ALL_SOURCES" :key="src.id" class="settings-source-item">
+            <el-switch :model-value="!settingsForm.disabledSources.includes(src.id)" @update:model-value="toggleSettingsSource(src.id, $event)" size="small" />
+            <div>
+              <span class="settings-source-label">{{ src.label }}</span>
+              <span class="settings-source-desc">{{ src.desc }}</span>
+            </div>
+          </div>
+        </div>
+        <template #footer>
+          <el-button @click="settingsVisible = false">取消</el-button>
+          <el-button type="primary" :loading="savingSettings" @click="saveSettings">保存</el-button>
+        </template>
+      </el-dialog>
 
       <div class="project-body">
         <!-- Left: round timeline -->
@@ -136,11 +157,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed, ref } from 'vue'
+import { onMounted, computed, ref, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useProjectStore } from '../stores/project'
 import { useSearchStore } from '../stores/search'
+import { projectApi } from '../api/client'
 import RoundTimeline from '../components/RoundTimeline.vue'
 import DocumentCard from '../components/DocumentCard.vue'
 
@@ -149,6 +171,52 @@ const router = useRouter()
 const projectStore = useProjectStore()
 const searchStore = useSearchStore()
 const submitting = ref(false)
+const ALL_SOURCES = [
+  { id: 'openalex',         label: 'OpenAlex',            desc: '国际综合文献库' },
+  { id: 'europe_pmc',       label: 'Europe PMC',          desc: '生物医学全文' },
+  { id: 'crossref',         label: 'Crossref',            desc: '期刊引用数据' },
+  { id: 'semantic_scholar', label: 'Semantic Scholar',    desc: 'AI语义检索' },
+  { id: 'arxiv',            label: 'arXiv',               desc: '物理/CS/数学预印本' },
+  { id: 'biorxiv',          label: 'bioRxiv',             desc: '生物预印本' },
+  { id: 'medrxiv',          label: 'medRxiv',             desc: '医学预印本' },
+  { id: 'lens_patent',      label: 'Lens.org 专利',       desc: '全球专利 CN/US/EP/WO' },
+  { id: 'clinical_trials',  label: 'ClinicalTrials.gov',  desc: '临床试验注册' },
+]
+
+const settingsVisible = ref(false)
+const savingSettings = ref(false)
+const settingsForm = reactive({ disabledSources: [] as string[] })
+
+function toggleSettingsSource(id: string, enabled: boolean) {
+  if (enabled) {
+    const idx = settingsForm.disabledSources.indexOf(id)
+    if (idx !== -1) settingsForm.disabledSources.splice(idx, 1)
+  } else {
+    if (!settingsForm.disabledSources.includes(id)) settingsForm.disabledSources.push(id)
+  }
+}
+
+function openSettings() {
+  const cfg = project.value?.search_config ?? {}
+  settingsForm.disabledSources = [...(cfg.disabled_sources ?? [])]
+  settingsVisible.value = true
+}
+
+async function saveSettings() {
+  savingSettings.value = true
+  try {
+    const id = route.params.id as string
+    const cfg = { ...(project.value?.search_config ?? {}), disabled_sources: [...settingsForm.disabledSources] }
+    await projectApi.update(id, { search_config: cfg })
+    await projectStore.fetchProject(id)
+    settingsVisible.value = false
+    ElMessage.success('设置已保存，下一轮检索生效')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.detail || '保存失败')
+  } finally {
+    savingSettings.value = false
+  }
+}
 
 const project = computed(() => projectStore.current)
 const currentRound = computed(() => searchStore.currentRound)
@@ -303,4 +371,9 @@ onMounted(async () => {
 }
 
 .next-round-panel { margin-top: 24px; }
+
+.settings-source-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.settings-source-item { display: flex; align-items: center; gap: 8px; }
+.settings-source-label { font-size: 13px; font-weight: 500; display: block; }
+.settings-source-desc { font-size: 11px; color: #909399; display: block; }
 </style>

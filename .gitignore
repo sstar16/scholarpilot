@@ -37,3 +37,6 @@ logs/
 
 # 专门学习的其他github项目
 other-projects/
+
+# 服务器端口 override（每台服务器不同，不提交）
+docker-compose.override.yml

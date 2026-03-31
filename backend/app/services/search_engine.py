@@ -4,6 +4,7 @@
 """
 import asyncio
 import logging
+import time
 from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
@@ -34,9 +35,22 @@ async def execute_search(
     scoring_weights: 自定义评分权重 {"keyword": 0.6, "citation": 0.25, "recency": 0.15}
     """
 
-    # 构建并行任务
+    # 构建并行任务（带计时包装）
     tasks = []
     task_sources = []
+    queries_per_source: Dict[str, str] = {}
+
+    async def _timed_fetch(fetcher, src_id, query, max_results, year_from, year_to):
+        t0 = time.time()
+        result = await fetcher.safe_fetch(
+            query=query,
+            max_results=max_results,
+            year_from=year_from,
+            year_to=year_to,
+        )
+        elapsed_ms = int((time.time() - t0) * 1000)
+        return result, elapsed_ms
+
     for source_id in query_plan.sources:
         fetcher = ALL_FETCHERS.get(source_id)
         if not fetcher:
@@ -47,8 +61,11 @@ async def execute_search(
             if source_id in _CHINESE_SOURCES and query_plan.original_chinese_query
             else query_plan.base_query
         )
+        queries_per_source[source_id] = query
         tasks.append(
-            fetcher.safe_fetch(
+            _timed_fetch(
+                fetcher=fetcher,
+                src_id=source_id,
                 query=query,
                 max_results=query_plan.max_results_per_source,
                 year_from=query_plan.year_from,
@@ -65,13 +82,29 @@ async def execute_search(
     all_docs: List[Dict] = []
     source_stats: Dict[str, Dict] = {}
     for source_id, result in zip(task_sources, results):
+        query_sent = queries_per_source.get(source_id, "")
         if isinstance(result, Exception):
             logger.error("[SearchEngine] %s 异常: %s", source_id, result)
-            source_stats[source_id] = {"status": "error", "count": 0, "error": str(result)[:200]}
+            source_stats[source_id] = {
+                "status": "error", "count": 0, "error": str(result)[:200],
+                "query_sent": query_sent,
+                "year_from": query_plan.year_from,
+                "year_to": query_plan.year_to,
+                "max_requested": query_plan.max_results_per_source,
+                "execution_ms": 0,
+            }
             continue
-        _, docs = result
+        (_, docs), elapsed_ms = result
         all_docs.extend(docs)
-        source_stats[source_id] = {"status": "ok", "count": len(docs)}
+        source_stats[source_id] = {
+            "status": "ok",
+            "count": len(docs),
+            "query_sent": query_sent,
+            "year_from": query_plan.year_from,
+            "year_to": query_plan.year_to,
+            "max_requested": query_plan.max_results_per_source,
+            "execution_ms": elapsed_ms,
+        }
         if progress_callback:
             await progress_callback(source_id, len(docs))
 

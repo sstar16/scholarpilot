@@ -16,6 +16,7 @@ class RoundStatusOut(BaseModel):
     total_candidates: int
     selected_count: int
     source_stats: Optional[dict] = None
+    search_queries: Optional[dict] = None
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
 
@@ -60,3 +61,4 @@ class RoundResultsOut(BaseModel):
     documents: List[DocumentOut]
     total_candidates: int
     source_stats: Optional[dict] = None
+    search_queries: Optional[dict] = None

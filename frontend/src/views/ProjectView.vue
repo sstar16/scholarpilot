@@ -15,6 +15,9 @@
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
+          <el-button size="small" :type="devViewOpen ? 'primary' : ''" :plain="!devViewOpen" @click="devViewOpen = !devViewOpen">
+            <el-icon><DataAnalysis /></el-icon> Dev View
+          </el-button>
           <el-button size="small" @click="openSettings"><el-icon><Setting /></el-icon> 搜索设置</el-button>
           <el-tag :type="statusType(project.status)" size="large">{{ statusLabel(project.status) }}</el-tag>
         </div>
@@ -102,6 +105,94 @@
                 </el-tooltip>
               </div>
 
+              <!-- Dev View Panel -->
+              <transition name="el-zoom-in-top">
+                <div v-if="devViewOpen" class="dev-view-panel">
+                  <div class="dev-view-header">
+                    <el-icon style="font-size:15px"><DataAnalysis /></el-icon>
+                    <span>检索详情 Dev View</span>
+                    <el-tag size="small" type="info" effect="dark" style="margin-left:8px">Round {{ currentRound?.round_number }}</el-tag>
+                  </div>
+
+                  <!-- Query Plan -->
+                  <div v-if="currentRound?.search_queries" class="dev-section">
+                    <div class="dev-section-title">查询计划</div>
+                    <div class="dev-plan-grid">
+                      <div class="dev-plan-row">
+                        <span class="dev-label">翻译查询词</span>
+                        <span class="dev-value dev-highlight">{{ currentRound.search_queries.base_query }}</span>
+                      </div>
+                      <div v-if="currentRound.search_queries.original_chinese_query" class="dev-plan-row">
+                        <span class="dev-label">原始中文词</span>
+                        <span class="dev-value">{{ currentRound.search_queries.original_chinese_query }}</span>
+                      </div>
+                      <div class="dev-plan-row">
+                        <span class="dev-label">扩展词汇</span>
+                        <span class="dev-value">
+                          <el-tag v-for="t in (currentRound.search_queries.expanded_terms || [])" :key="t" size="small" effect="plain" style="margin-right:4px;margin-bottom:2px">{{ t }}</el-tag>
+                        </span>
+                      </div>
+                      <div v-if="currentRound.search_queries.exclude_terms?.length" class="dev-plan-row">
+                        <span class="dev-label">排除词</span>
+                        <span class="dev-value">
+                          <el-tag v-for="t in currentRound.search_queries.exclude_terms" :key="t" size="small" type="danger" effect="plain" style="margin-right:4px">{{ t }}</el-tag>
+                        </span>
+                      </div>
+                      <div class="dev-plan-row">
+                        <span class="dev-label">时间范围</span>
+                        <span class="dev-value">{{ currentRound.search_queries.year_from ?? '不限' }} — {{ currentRound.search_queries.year_to ?? '不限' }}</span>
+                      </div>
+                      <div class="dev-plan-row">
+                        <span class="dev-label">语言策略</span>
+                        <span class="dev-value">{{ currentRound.search_queries.language_scope }}</span>
+                      </div>
+                      <div class="dev-plan-row">
+                        <span class="dev-label">每源上限</span>
+                        <span class="dev-value">{{ currentRound.search_queries.max_per_source }} 篇</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Per-source breakdown -->
+                  <div v-if="Object.keys(searchStore.sourceStats).length > 0" class="dev-section">
+                    <div class="dev-section-title">各数据源响应</div>
+                    <div class="dev-source-cards">
+                      <div
+                        v-for="(stat, sourceId) in searchStore.sourceStats"
+                        :key="sourceId"
+                        class="dev-source-card"
+                        :class="stat.status === 'ok' ? 'dev-card-ok' : 'dev-card-error'"
+                      >
+                        <div class="dev-card-header">
+                          <span class="dev-card-name">{{ sourceId }}</span>
+                          <div style="display:flex;gap:4px">
+                            <el-tag :type="stat.status === 'ok' ? 'success' : 'danger'" size="small" effect="plain">
+                              {{ stat.status === 'ok' ? stat.count + ' 篇' : '失败' }}
+                            </el-tag>
+                            <el-tag v-if="stat.execution_ms != null" type="info" size="small" effect="plain">{{ stat.execution_ms }}ms</el-tag>
+                          </div>
+                        </div>
+                        <div v-if="stat.query_sent" class="dev-card-query">
+                          <span class="dev-label">查询词</span>
+                          <code class="dev-code">{{ stat.query_sent }}</code>
+                        </div>
+                        <div v-if="stat.year_from || stat.year_to" class="dev-card-meta">
+                          年份 {{ stat.year_from ?? '不限' }}–{{ stat.year_to ?? '不限' }} · 上限 {{ stat.max_requested }} 篇
+                        </div>
+                        <div v-if="stat.error" class="dev-card-errmsg">{{ stat.error }}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Summary -->
+                  <div class="dev-summary">
+                    候选总数：<strong>{{ currentRound?.total_candidates ?? 0 }}</strong> 篇
+                    &nbsp;→&nbsp;
+                    最终筛选：<strong>{{ currentRound?.selected_count ?? searchStore.documents.length }}</strong> 篇
+                  </div>
+                </div>
+              </transition>
+
               <el-alert
                 v-if="currentRound?.status === 'awaiting_feedback'"
                 type="info"
@@ -176,6 +267,7 @@ const router = useRouter()
 const projectStore = useProjectStore()
 const searchStore = useSearchStore()
 const submitting = ref(false)
+const devViewOpen = ref(false)
 const ALL_SOURCES = [
   { id: 'openalex',         label: 'OpenAlex',            desc: '国际综合文献库' },
   { id: 'europe_pmc',       label: 'Europe PMC',          desc: '生物医学全文' },
@@ -409,4 +501,101 @@ onMounted(async () => {
 .settings-source-item { display: flex; align-items: center; gap: 8px; }
 .settings-source-label { font-size: 13px; font-weight: 500; display: block; }
 .settings-source-desc { font-size: 11px; color: #909399; display: block; }
+
+/* Dev View */
+.dev-view-panel {
+  background: #1a1d23;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  border: 1px solid #2d3139;
+  color: #c9d1d9;
+  font-size: 13px;
+}
+.dev-view-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #58a6ff;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #2d3139;
+}
+.dev-section { margin-bottom: 16px; }
+.dev-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8b949e;
+  margin-bottom: 10px;
+}
+.dev-plan-grid { display: flex; flex-direction: column; gap: 6px; }
+.dev-plan-row { display: flex; align-items: flex-start; gap: 12px; }
+.dev-label {
+  font-size: 11px;
+  color: #8b949e;
+  min-width: 72px;
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+.dev-value { color: #e6edf3; flex: 1; }
+.dev-highlight { color: #79c0ff; font-weight: 500; font-family: monospace; }
+
+.dev-source-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.dev-source-card {
+  background: #0d1117;
+  border-radius: 6px;
+  padding: 10px 12px;
+  border: 1px solid #2d3139;
+}
+.dev-card-ok { border-left: 3px solid #238636; }
+.dev-card-error { border-left: 3px solid #da3633; }
+.dev-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.dev-card-name { font-weight: 600; color: #c9d1d9; font-size: 13px; }
+.dev-card-query {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.dev-code {
+  background: #161b22;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #a5d6ff;
+  word-break: break-all;
+  flex: 1;
+}
+.dev-card-meta { font-size: 11px; color: #8b949e; margin-top: 4px; }
+.dev-card-errmsg {
+  font-size: 11px;
+  color: #f85149;
+  margin-top: 6px;
+  background: #1c0a0a;
+  padding: 4px 6px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+.dev-summary {
+  padding-top: 12px;
+  border-top: 1px solid #2d3139;
+  font-size: 13px;
+  color: #8b949e;
+  text-align: right;
+}
+.dev-summary strong { color: #c9d1d9; }
 </style>

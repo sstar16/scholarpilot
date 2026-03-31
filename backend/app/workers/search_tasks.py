@@ -108,6 +108,26 @@ async def _execute_round_async(round_id_str: str):
                 project_domains=project.domains,
             )
 
+            # 4b. 将 QueryPlan 核心信息存入 search_queries（供 Dev View 使用）
+            from sqlalchemy import update as sql_update
+            query_plan_info = {
+                "base_query": query_plan.base_query,
+                "expanded_terms": query_plan.expanded_terms,
+                "exclude_terms": query_plan.exclude_terms,
+                "year_from": query_plan.year_from,
+                "year_to": query_plan.year_to,
+                "language_scope": query_plan.language_scope,
+                "sources_selected": query_plan.sources,
+                "max_per_source": query_plan.max_results_per_source,
+                "original_chinese_query": query_plan.original_chinese_query,
+            }
+            await db.execute(
+                sql_update(SearchRound).where(SearchRound.id == round_id).values(
+                    search_queries=query_plan_info
+                )
+            )
+            await db.commit()
+
             # 5. 执行并行检索（传入跨轮去重集合和评分权重）
             selected_docs, total_candidates, source_stats = await execute_search(
                 query_plan,

@@ -78,6 +78,10 @@ export const useSearchStore = defineStore('search', () => {
     const res = await searchApi.getRoundResults(projectId.value, roundId)
     documents.value = res.data.documents ?? []
     sourceStats.value = res.data.source_stats ?? {}
+    // Also persist search_queries from results (has enriched per-source stats)
+    if (res.data.search_queries && currentRound.value) {
+      currentRound.value = { ...currentRound.value, search_queries: res.data.search_queries }
+    }
   }
 
   function setFeedback(docId: string, relevance: number) {

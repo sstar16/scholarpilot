@@ -1,10 +1,10 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
+项目在不断变动中，不用过分遵守，可灵活改变
 ## 项目简介
 
-ScholarPilot（内部名 URIP）：面向科研人员的全领域情报检索平台。用户描述研究方向后，系统通过 **5轮渐进式检索**（时间范围从近5年逐步扩展到全时间）从多个学术数据源并行抓取文献，AI生成中文摘要，用户反馈驱动画像学习，第5轮结束后自动转入每日监控模式。
+ScholarPilot（内部名 URIP）：面向科研人员或公司技术部的全领域情报检索平台。用户描述研究方向后，系统通过 **渐进式检索**（时间范围从近5年逐步扩展到全时间）从多个学术或专利数据源并行抓取文献和专利，AI生成中文摘要，用户反馈驱动画像学习，结束后自动转入每日监控模式。
 
 ## 启动与常用命令
 
@@ -80,19 +80,25 @@ Celery Beat 每天早6点:
 
 ### 数据源扩展点
 
-所有数据源继承 `AbstractFetcher`（`fetchers/base.py`），实现 `fetch()` 方法后加入 `international.py` 的 `ALL_FETCHERS` 字典即可自动被 `search_engine.py` 调用。Phase 1 实现了 7 个国际来源；Phase 2 预留了万方、百度学术、USPTO、CNIPA 的注册占位。
+所有数据源继承 `AbstractFetcher`（`fetchers/base.py`），实现 `fetch()` 方法后加入 `international.py` 的 `ALL_FETCHERS` 字典即可自动被 `search_engine.py` 调用。当前共 13 个数据源（含新增的 DBLP + 百度学术）。
 
 **国内 Docker/WSL2 环境网络限制（已验证）：**
 
 | 数据源 | 状态 | 说明 |
 |--------|------|------|
-| OpenAlex | ✅ 可访问 | 主力来源 |
+| OpenAlex | ✅ 可访问 | 主力来源（0篇时查 worker 日志看翻译结果） |
 | EuropePMC | ✅ 可访问 | PubMed 的欧洲镜像，内容相同且有完整摘要 |
+| Crossref | ✅ 可访问 | 期刊引用数据，稳定 |
+| **DBLP** | ✅ 可访问 | CS 顶会论文（CVPR/NeurIPS/ACL 等），免费 JSON API，**新增** |
+| **百度学术** | ✅ 可访问 | 中文论文，HTML 解析，仅中文描述+chinese_first scope 触发，**新增** |
 | SemanticScholar | ⚠️ 限速 | 公开 API 频繁 429，默认禁用 |
 | PubMed (NCBI) | ❌ 封锁 | `eutils.ncbi.nlm.nih.gov` TLS 握手超时，用 EuropePMC 替代 |
 | arXiv | ❌ 封锁 | `export.arxiv.org` 超时，默认禁用 |
+| Lens.org 专利 | ⚠️ 需 token | `LENS_API_TOKEN` 未配置时返回空，lens.org 免费申请 |
 
 通过 `.env` 的 `DISABLED_SOURCES=pubmed,arxiv,biorxiv,medrxiv,semantic_scholar` 控制禁用列表，无需改代码。`query_builder._select_sources()` 读取此变量过滤。
+
+**中文查询流程**：`_get_english_query()` 用 LLM 将中文描述翻译为英文关键词供国际数据源使用；`original_chinese_query` 字段保留原始中文核心词，中文数据源（百度学术）使用此字段而非翻译词。
 
 ### LLM 提供商
 

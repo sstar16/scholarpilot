@@ -197,10 +197,12 @@ const ALL_SOURCES = [
   { id: 'europe_pmc',       label: 'Europe PMC',          desc: '生物医学全文' },
   { id: 'crossref',         label: 'Crossref',            desc: '期刊引用数据' },
   { id: 'semantic_scholar', label: 'Semantic Scholar',    desc: 'AI语义检索' },
+  { id: 'dblp',             label: 'DBLP',                desc: 'CS顶级会议/期刊（免费）' },
+  { id: 'baidu_xueshu',     label: '百度学术',             desc: '中文论文（需中文优先）' },
   { id: 'arxiv',            label: 'arXiv',               desc: '物理/CS/数学预印本' },
   { id: 'biorxiv',          label: 'bioRxiv',             desc: '生物预印本' },
   { id: 'medrxiv',          label: 'medRxiv',             desc: '医学预印本' },
-  { id: 'lens_patent',      label: 'Lens.org 专利',       desc: '全球专利 CN/US/EP/WO' },
+  { id: 'lens_patent',      label: 'Lens.org 专利',       desc: '全球专利 CN/US/EP/WO（需 LENS_API_TOKEN）' },
   { id: 'clinical_trials',  label: 'ClinicalTrials.gov',  desc: '临床试验注册' },
 ]
 

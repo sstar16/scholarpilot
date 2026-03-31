@@ -34,6 +34,7 @@ class QueryPlan:
     sources: List[str]
     max_results_per_source: int
     language_scope: str  # chinese_first | international | global
+    original_chinese_query: Optional[str] = None  # 中文数据源使用的原始中文查询词
 
 
 def _get_round_config(round_number: int, search_config: Optional[Dict[str, Any]] = None) -> Dict:
@@ -99,6 +100,13 @@ async def build_query(
     # 提取/翻译核心关键词
     base_query = await _get_english_query(project_description, llm_manager)
 
+    # 如果原始描述是中文，保留中文核心词供中文数据源使用
+    original_chinese_query = (
+        _extract_core_query(project_description)
+        if _is_mostly_chinese(project_description)
+        else None
+    )
+
     base_terms = [t for t in base_query.split() if len(t) > 2]
     extra = preferred_keywords[:5] if preferred_keywords and round_number > 1 else []
     expanded_terms = base_terms + extra
@@ -114,7 +122,10 @@ async def build_query(
 
     # 多领域选源：取所有领域的并集
     domains = project_domains or ([project_domain] if project_domain else [])
-    sources = _select_sources(scope, domains, preferred_sources, round_number, search_config)
+    sources = _select_sources(
+        scope, domains, preferred_sources, round_number, search_config,
+        has_chinese_desc=original_chinese_query is not None,
+    )
 
     max_results = config.get("max_results", 20)
     max_results_per_source = max(5, max_results // max(len(sources), 1))
@@ -128,6 +139,7 @@ async def build_query(
         sources=sources,
         max_results_per_source=max_results_per_source,
         language_scope=scope,
+        original_chinese_query=original_chinese_query,
     )
 
 
@@ -188,9 +200,10 @@ async def _get_english_query(description: str, llm_manager) -> str:
 
 # 领域到数据源的映射
 DOMAIN_SOURCE_MAP = {
-    "cs": ["arxiv"],
-    "computer": ["arxiv"],
-    "ai": ["arxiv"],
+    "cs": ["arxiv", "dblp"],
+    "computer": ["arxiv", "dblp"],
+    "ai": ["arxiv", "dblp"],
+    "software": ["dblp"],
     "biology": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent"],
     "medicine": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent"],
     "pharmacology": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent"],
@@ -210,6 +223,7 @@ def _select_sources(
     preferred_sources: Optional[List[str]],
     round_number: int,
     search_config: Optional[Dict[str, Any]] = None,
+    has_chinese_desc: bool = False,
 ) -> List[str]:
     """根据范围、领域列表和配置选择数据源"""
     import os
@@ -232,6 +246,12 @@ def _select_sources(
     # 若无匹配领域，默认加 arxiv
     if not added and "arxiv" not in disabled:
         sources.append("arxiv")
+
+    # chinese_first scope + 中文描述：优先加入中文数据源
+    if scope == "chinese_first" and has_chinese_desc:
+        for zh_src in ["baidu_xueshu"]:
+            if zh_src not in sources and zh_src not in disabled:
+                sources.insert(0, zh_src)  # 放到最前面，优先抓取
 
     # 始终尝试加入专利和临床试验来源
     for extra in ["lens_patent", "clinical_trials"]:

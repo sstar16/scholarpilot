@@ -84,17 +84,22 @@
               <!-- Source stats summary -->
               <div v-if="searchStore.sourceStats && Object.keys(searchStore.sourceStats).length > 0" class="source-stats">
                 <span class="source-stats-label">数据源：</span>
-                <el-tag
+                <el-tooltip
                   v-for="(stat, sourceId) in searchStore.sourceStats"
                   :key="sourceId"
-                  :type="stat.status === 'ok' && stat.count > 0 ? 'success' : stat.status === 'error' ? 'danger' : 'info'"
-                  size="small"
-                  effect="plain"
-                  style="margin-right: 6px; margin-bottom: 4px"
+                  :content="getSourceTooltip(sourceId, stat)"
+                  placement="top"
                 >
-                  {{ sourceId }}: {{ stat.count ?? 0 }}篇
-                  <span v-if="stat.status === 'error'" style="color: #f56c6c"> (错误)</span>
-                </el-tag>
+                  <el-tag
+                    :type="stat.status === 'ok' && stat.count > 0 ? 'success' : stat.status === 'error' ? 'danger' : 'info'"
+                    size="small"
+                    effect="plain"
+                    style="margin-right: 6px; margin-bottom: 4px; cursor: default"
+                  >
+                    {{ sourceId }}: {{ stat.count ?? 0 }}篇
+                    <span v-if="stat.status === 'error'" style="color: #f56c6c"> !</span>
+                  </el-tag>
+                </el-tooltip>
               </div>
 
               <el-alert
@@ -176,16 +181,40 @@ const ALL_SOURCES = [
   { id: 'europe_pmc',       label: 'Europe PMC',          desc: '生物医学全文' },
   { id: 'crossref',         label: 'Crossref',            desc: '期刊引用数据' },
   { id: 'semantic_scholar', label: 'Semantic Scholar',    desc: 'AI语义检索' },
+  { id: 'dblp',             label: 'DBLP',                desc: 'CS顶级会议/期刊（免费）' },
+  { id: 'baidu_xueshu',     label: '百度学术',             desc: '中文论文（需中文优先）' },
   { id: 'arxiv',            label: 'arXiv',               desc: '物理/CS/数学预印本' },
   { id: 'biorxiv',          label: 'bioRxiv',             desc: '生物预印本' },
   { id: 'medrxiv',          label: 'medRxiv',             desc: '医学预印本' },
-  { id: 'lens_patent',      label: 'Lens.org 专利',       desc: '全球专利 CN/US/EP/WO' },
+  { id: 'lens_patent',      label: 'Lens.org 专利',       desc: '全球专利 CN/US/EP/WO（需 LENS_API_TOKEN）' },
   { id: 'clinical_trials',  label: 'ClinicalTrials.gov',  desc: '临床试验注册' },
 ]
 
 const settingsVisible = ref(false)
 const savingSettings = ref(false)
 const settingsForm = reactive({ disabledSources: [] as string[] })
+
+const SOURCE_HINTS: Record<string, string> = {
+  pubmed: '国内访问受限（TLS超时），用 Europe PMC 替代',
+  lens_patent: '需在 .env 配置 LENS_API_TOKEN（lens.org 免费申请）',
+  semantic_scholar: '频率限制（429），已降低优先级',
+  arxiv: '国内访问受限',
+  baidu_xueshu: '中文论文（仅 chinese_first 模式下触发，使用中文原始查询词）',
+  dblp: 'CS顶会/期刊（CVPR/NeurIPS/ACL等），无需鉴权',
+}
+
+function getSourceTooltip(sourceId: string, stat: { status: string; count: number; error?: string }): string {
+  if (stat.status === 'error') {
+    return `错误：${stat.error || '未知错误'}`
+  }
+  if (stat.count === 0 && SOURCE_HINTS[sourceId]) {
+    return SOURCE_HINTS[sourceId]
+  }
+  if (stat.count > 0) {
+    return `成功返回 ${stat.count} 篇`
+  }
+  return '本次查询无匹配结果'
+}
 
 function toggleSettingsSource(id: string, enabled: boolean) {
   if (enabled) {

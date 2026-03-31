@@ -9,9 +9,15 @@ from typing import Dict, List, Optional, Set
 logger = logging.getLogger(__name__)
 
 from app.services.fetchers.international import ALL_FETCHERS
+from app.services.fetchers.base import FetcherRegistry
 from app.services.relevance_engine import select_top_documents, deduplicate_docs
 from app.services.metadata_enricher import enrich_missing_abstracts
 from app.services.query_builder import QueryPlan
+
+# 语言为 zh 的数据源，优先使用原始中文查询词
+_CHINESE_SOURCES = {
+    k for k, v in FetcherRegistry.SOURCES.items() if v.get("language") == "zh"
+}
 
 
 async def execute_search(
@@ -35,9 +41,15 @@ async def execute_search(
         fetcher = ALL_FETCHERS.get(source_id)
         if not fetcher:
             continue
+        # 中文数据源优先使用原始中文查询词，英文数据源使用翻译后的查询词
+        query = (
+            query_plan.original_chinese_query or query_plan.base_query
+            if source_id in _CHINESE_SOURCES and query_plan.original_chinese_query
+            else query_plan.base_query
+        )
         tasks.append(
             fetcher.safe_fetch(
-                query=query_plan.base_query,
+                query=query,
                 max_results=query_plan.max_results_per_source,
                 year_from=query_plan.year_from,
                 year_to=query_plan.year_to,

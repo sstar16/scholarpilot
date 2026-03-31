@@ -131,6 +131,22 @@ class FetcherRegistry:
             "language": "en",
             "phase": 1,
         },
+        "dblp": {
+            "name": "DBLP",
+            "description": "计算机科学顶级会议/期刊（CVPR/NeurIPS/ACL 等），免费 JSON API",
+            "doc_type": "paper",
+            "category": "literature",
+            "language": "en",
+            "phase": 1,
+        },
+        "baidu_xueshu": {
+            "name": "百度学术",
+            "description": "百度学术中文文献检索（HTML 解析，中文论文主要来源）",
+            "doc_type": "paper",
+            "category": "literature",
+            "language": "zh",
+            "phase": 1,
+        },
         # Phase 2
         "wanfang": {
             "name": "万方数据",
@@ -141,8 +157,8 @@ class FetcherRegistry:
             "phase": 2,
         },
         "baidu_scholar": {
-            "name": "百度学术",
-            "description": "百度学术中文文献检索",
+            "name": "百度学术（旧占位）",
+            "description": "已替换为 baidu_xueshu",
             "doc_type": "paper",
             "category": "literature",
             "language": "zh",

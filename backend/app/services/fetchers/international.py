@@ -129,7 +129,9 @@ class OpenAlexFetcher(AbstractFetcher):
             try:
                 r = await client.get(f"{OPENALEX_BASE}/works", params=params)
                 if r.status_code == 200:
-                    for work in r.json().get("results", []):
+                    results = r.json().get("results", [])
+                    logger.debug("[OpenAlex] 查询 '%s' 命中 %d 篇（status=%d）", query[:60], len(results), r.status_code)
+                    for work in results:
                         authorships = work.get("authorships", [])
                         authors = ", ".join([a.get("author", {}).get("display_name", "") for a in authorships[:5]])
                         if len(authorships) > 5:
@@ -150,8 +152,12 @@ class OpenAlexFetcher(AbstractFetcher):
                             "citation_count": work.get("cited_by_count", 0),
                             "pdf_url": (work.get("primary_location") or {}).get("pdf_url") if work.get("primary_location") else None,
                         })
+                else:
+                    logger.warning("[OpenAlex] HTTP %d，params=%s", r.status_code, params)
             except Exception as e:
                 logger.error("[OpenAlex] %s: %s", type(e).__name__, e, exc_info=True)
+        if not papers:
+            logger.warning("[OpenAlex] 最终返回 0 篇，查询词: '%s'", query[:80])
         return papers[:max_results]
 
     def _reconstruct_abstract(self, inverted_index: Optional[Dict]) -> Optional[str]:
@@ -374,6 +380,8 @@ from app.services.fetchers.patents import USPTOFetcher
 from app.services.fetchers.clinical import ClinicalTrialsFetcher
 from app.services.fetchers.crossref import CrossrefFetcher
 from app.services.fetchers.lens import LensPatentFetcher
+from app.services.fetchers.dblp import DBLPFetcher
+from app.services.fetchers.chinese import BaiduXueshuFetcher
 
 # 注册表：source_id → fetcher 实例
 ALL_FETCHERS: Dict[str, AbstractFetcher] = {
@@ -388,4 +396,6 @@ ALL_FETCHERS: Dict[str, AbstractFetcher] = {
     "lens_patent": LensPatentFetcher(),
     "clinical_trials": ClinicalTrialsFetcher(),
     "crossref": CrossrefFetcher(),
+    "dblp": DBLPFetcher(),
+    "baidu_xueshu": BaiduXueshuFetcher(),
 }

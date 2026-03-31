@@ -1,12 +1,10 @@
 """
 SooPat 中国专利搜索 Fetcher
-https://www.soopat.com — 需要登录后的 session cookies
+https://www.soopat.com
 
-如何获取 cookies（Edge/Chrome）：
-1. 打开浏览器，登录 soopat.com
-2. 按 F12 → 网络（Network）→ 随便点一个请求 → 请求头（Headers）
-3. 找到 Cookie 这一行，复制冒号后面的全部内容
-4. 粘贴到 .env 的 SOOPAT_COOKIES=... 中
+支持两种鉴权方式（优先级从高到低）：
+  1. 账号密码自动登录（推荐）：配置 SOOPAT_EMAIL + SOOPAT_PASSWORD，无需手动操作
+  2. 手动 Cookie：配置 SOOPAT_COOKIES（浏览器 F12 → 网络 → Cookie 请求头），会过期
 
 中国国内专利（CN发明/实用新型/外观设计）覆盖非常好
 """
@@ -27,9 +25,9 @@ from app.services.fetchers.base import AbstractFetcher
 
 logger = logging.getLogger(__name__)
 
-# SooPat 有时重定向到 www2，这里两个都试
-SOOPAT_SEARCH_URL = "https://www.soopat.com/Home/Result"
 SOOPAT_BASE = "https://www.soopat.com"
+SOOPAT_LOGIN_URL = f"{SOOPAT_BASE}/Account/Login"
+SOOPAT_SEARCH_URL = f"{SOOPAT_BASE}/Home/Result"
 
 _UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -39,22 +37,97 @@ _UA = (
 
 
 class SooPatFetcher(AbstractFetcher):
-    """SooPat 中国专利（CN）— BeautifulSoup HTML 解析，需登录 session cookies"""
+    """SooPat 中国专利（CN） — 自动登录 + BeautifulSoup HTML 解析"""
 
     source_id = "soopat"
     DEFAULT_TIMEOUT = 20.0
 
     def __init__(self):
-        self._cookies_str = os.getenv("SOOPAT_COOKIES", "")
+        self._email = os.getenv("SOOPAT_EMAIL", "")
+        self._password = os.getenv("SOOPAT_PASSWORD", "")
+        self._manual_cookies_str = os.getenv("SOOPAT_COOKIES", "")
+        # 内存中缓存登录后的 cookies（进程生命周期内复用）
+        self._cached_cookies: Optional[httpx.Cookies] = None
 
-    def _parse_cookies(self) -> dict:
-        cookies: dict = {}
-        for part in self._cookies_str.split(";"):
+    # ------------------------------------------------------------------ #
+    #  登录                                                                #
+    # ------------------------------------------------------------------ #
+
+    async def _login(self, client: httpx.AsyncClient) -> Optional[httpx.Cookies]:
+        """
+        自动登录，返回登录后的 httpx.Cookies。
+        流程：GET 登录页（获取 hidden 字段）→ POST 表单 → 检查跳转
+        """
+        try:
+            # Step 1：获取登录页（含 ReturnUrl/Kickout hidden 字段）
+            r = await client.get(SOOPAT_LOGIN_URL, headers={"User-Agent": _UA}, timeout=10.0)
+            if r.status_code != 200:
+                logger.warning("[SooPat] 登录页获取失败: HTTP %d", r.status_code)
+                return None
+
+            soup = BeautifulSoup(r.text, "lxml")
+            form = soup.find("form")
+            if not form:
+                logger.warning("[SooPat] 登录页未找到表单")
+                return None
+
+            # 收集所有 hidden 字段
+            payload: dict = {}
+            for inp in form.find_all("input"):
+                name = inp.get("name")
+                val = inp.get("value", "")
+                if name and inp.get("type") in ("hidden", None):
+                    payload[name] = val
+
+            # 填入凭证
+            payload["Email"] = self._email
+            payload["Password"] = self._password
+
+            # Step 2：POST 登录
+            r2 = await client.post(
+                SOOPAT_LOGIN_URL,
+                data=payload,
+                headers={
+                    "User-Agent": _UA,
+                    "Referer": SOOPAT_LOGIN_URL,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                follow_redirects=True,
+                timeout=15.0,
+            )
+
+            # 登录成功：重定向后应落在非登录页；若还在 /Account/Login 说明失败
+            if "Account/Login" in str(r2.url):
+                logger.warning("[SooPat] 登录失败（用户名或密码错误，或触发验证码）")
+                return None
+
+            # 提取 cookies（client 会自动维护 cookie jar）
+            cookies = httpx.Cookies()
+            for key, value in client.cookies.items():
+                cookies.set(key, value, domain="www.soopat.com")
+
+            logger.info("[SooPat] 自动登录成功，已获取 %d 个 cookies", len(list(client.cookies.items())))
+            return cookies
+
+        except Exception as e:
+            logger.error("[SooPat] 登录异常: %s", e)
+            return None
+
+    def _manual_cookies(self) -> Optional[httpx.Cookies]:
+        """从 SOOPAT_COOKIES 字符串解析 httpx.Cookies"""
+        if not self._manual_cookies_str:
+            return None
+        cookies = httpx.Cookies()
+        for part in self._manual_cookies_str.split(";"):
             part = part.strip()
             if "=" in part:
                 k, v = part.split("=", 1)
-                cookies[k.strip()] = v.strip()
+                cookies.set(k.strip(), v.strip(), domain="www.soopat.com")
         return cookies
+
+    # ------------------------------------------------------------------ #
+    #  Fetch                                                               #
+    # ------------------------------------------------------------------ #
 
     async def fetch(
         self, query: str, max_results=20, year_from=None, year_to=None, language=None
@@ -62,36 +135,54 @@ class SooPatFetcher(AbstractFetcher):
         if not _BS4_OK:
             logger.error("[SooPat] beautifulsoup4 未安装，请重建镜像")
             return []
-        if not self._cookies_str:
-            logger.warning("[SooPat] SOOPAT_COOKIES 未配置，跳过")
-            return []
 
-        cookies = self._parse_cookies()
-        headers = {
-            "User-Agent": _UA,
-            "Referer": SOOPAT_BASE + "/",
-            "Accept-Language": "zh-CN,zh;q=0.9",
-        }
+        has_credentials = bool(self._email and self._password)
+        has_manual = bool(self._manual_cookies_str)
+
+        if not has_credentials and not has_manual:
+            logger.warning("[SooPat] 未配置 SOOPAT_EMAIL/PASSWORD 或 SOOPAT_COOKIES，跳过")
+            return []
 
         papers: List[Dict] = []
         page_size = 10
-        pages_needed = min((max_results + page_size - 1) // page_size, 5)  # 最多50条
+        pages_needed = min((max_results + page_size - 1) // page_size, 5)
 
         async with httpx.AsyncClient(
-            timeout=self.DEFAULT_TIMEOUT, follow_redirects=True
+            timeout=self.DEFAULT_TIMEOUT,
+            follow_redirects=False,  # 手动处理，检测登录过期
         ) as client:
+            # 获取 cookies（优先账号密码自动登录）
+            if has_credentials:
+                if self._cached_cookies is None:
+                    self._cached_cookies = await self._login(client)
+                if self._cached_cookies:
+                    client.cookies.update(self._cached_cookies)
+                elif has_manual:
+                    logger.warning("[SooPat] 自动登录失败，降级使用手动 cookies")
+                    manual = self._manual_cookies()
+                    if manual:
+                        client.cookies.update(manual)
+                else:
+                    return []
+            else:
+                manual = self._manual_cookies()
+                if manual:
+                    client.cookies.update(manual)
+                else:
+                    return []
+
             for page in range(pages_needed):
                 if len(papers) >= max_results:
                     break
+
                 params = {
                     "SearchWord": query,
-                    "FMZL": "Y",  # 发明专利
-                    "SYXX": "Y",  # 实用新型
-                    "WGZL": "Y",  # 外观设计
-                    "FMSQ": "Y",  # 发明申请
+                    "FMZL": "Y",
+                    "SYXX": "Y",
+                    "WGZL": "Y",
+                    "FMSQ": "Y",
                     "PatentIndex": page * page_size,
                 }
-                # 年份范围（SooPat 支持 SQNF/SQNN 申请年份参数）
                 if year_from:
                     params["SQNF"] = str(year_from)
                 if year_to:
@@ -101,9 +192,33 @@ class SooPatFetcher(AbstractFetcher):
                     r = await client.get(
                         SOOPAT_SEARCH_URL,
                         params=params,
-                        cookies=cookies,
-                        headers=headers,
+                        headers={
+                            "User-Agent": _UA,
+                            "Referer": SOOPAT_BASE + "/",
+                            "Accept-Language": "zh-CN,zh;q=0.9",
+                        },
                     )
+
+                    # 检测 session 过期（重定向到登录页）
+                    if r.status_code in (301, 302) and "Account/Login" in r.headers.get("location", ""):
+                        logger.info("[SooPat] session 已过期，尝试重新登录")
+                        self._cached_cookies = None
+                        if has_credentials:
+                            self._cached_cookies = await self._login(client)
+                            if self._cached_cookies:
+                                client.cookies.update(self._cached_cookies)
+                                # 重试当前页
+                                r = await client.get(
+                                    SOOPAT_SEARCH_URL, params=params,
+                                    headers={"User-Agent": _UA},
+                                )
+                            else:
+                                logger.warning("[SooPat] 重新登录失败，停止")
+                                break
+                        else:
+                            logger.warning("[SooPat] 手动 cookies 已过期，请更新 SOOPAT_COOKIES")
+                            break
+
                     if r.status_code != 200:
                         logger.warning("[SooPat] HTTP %d (page %d)", r.status_code, page)
                         break
@@ -122,7 +237,7 @@ class SooPatFetcher(AbstractFetcher):
                     logger.error("[SooPat] 第%d页请求失败: %s", page + 1, e)
                     break
 
-        # 客户端年份后过滤（作为补充，弥补 SQNF/SQNN 可能不生效的情况）
+        # 客户端年份补充过滤
         if year_from or year_to:
             filtered = []
             for p in papers:
@@ -141,11 +256,14 @@ class SooPatFetcher(AbstractFetcher):
         logger.info("[SooPat] 返回 %d 篇专利", len(papers[:max_results]))
         return papers[:max_results]
 
+    # ------------------------------------------------------------------ #
+    #  HTML 解析                                                           #
+    # ------------------------------------------------------------------ #
+
     def _parse_results(self, html: str) -> List[Dict]:
         soup = BeautifulSoup(html, "lxml")
         papers: List[Dict] = []
 
-        # 专利结果块 — 尝试多种选择器（页面改版时降级）
         result_divs = (
             soup.find_all("div", style=lambda s: s and "min-height: 180px" in s)
             or soup.select("div.result-item")
@@ -158,7 +276,6 @@ class SooPatFetcher(AbstractFetcher):
 
         for div in result_divs:
             try:
-                # ---- 标题 + 专利号 ----
                 h2 = div.find("h2") or div.find("h3")
                 if not h2:
                     continue
@@ -167,12 +284,10 @@ class SooPatFetcher(AbstractFetcher):
                     continue
 
                 full_text = a_tag.get_text(" ", strip=True)
-                # 典型格式：[发明] 一种纳米粒子的制备方法 - CN201810123456A
-                # 或：一种纳米粒子的制备方法 - CN201810123456A
                 patent_type = ""
                 font_tag = h2.find("font")
                 if font_tag:
-                    patent_type = font_tag.get_text(strip=True)  # e.g. [发明]
+                    patent_type = font_tag.get_text(strip=True)
                     full_text = full_text.replace(patent_type, "").strip()
 
                 if " - " in full_text:
@@ -186,24 +301,19 @@ class SooPatFetcher(AbstractFetcher):
                 href = a_tag.get("href", "")
                 url = (SOOPAT_BASE + href) if href.startswith("/") else href or None
 
-                # ---- 申请人 / 发明人 ----
                 author_span = div.find("span", class_="PatentAuthorBlock")
                 if author_span:
                     authors = ", ".join(
                         a.get_text(strip=True) for a in author_span.find_all("a")
                     )
                 else:
-                    # 备用：找所有带 申请人 / 发明人 标签
                     authors = _extract_label(div, ["申请人", "发明人"])
 
-                # ---- 摘要 ----
                 content_span = div.find("span", class_="PatentContentBlock")
-                if content_span:
-                    abstract = content_span.get_text(" ", strip=True)
-                else:
-                    abstract = _extract_label(div, ["摘要"]) or None
+                abstract = content_span.get_text(" ", strip=True) if content_span else (
+                    _extract_label(div, ["摘要"]) or None
+                )
 
-                # ---- 日期 ----
                 pub_date = None
                 for pattern in [r"(\d{4}-\d{2}-\d{2})", r"(\d{4}/\d{2}/\d{2})", r"(\d{4}\.\d{2}\.\d{2})"]:
                     m = re.search(pattern, div.get_text())
@@ -233,7 +343,6 @@ class SooPatFetcher(AbstractFetcher):
 
 
 def _extract_label(div, labels: list) -> str:
-    """在 div 文本中找 '标签：xxx' 模式，返回 xxx"""
     text = div.get_text(" ", strip=True)
     for label in labels:
         m = re.search(rf"{label}[：:]\s*(.+?)(?:\s{{2,}}|$)", text)

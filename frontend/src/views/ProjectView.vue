@@ -200,7 +200,7 @@ const SOURCE_HINTS: Record<string, string> = {
   pubmed: '国内访问受限（TLS超时），用 Europe PMC 替代',
   lens_patent: '需在 .env 配置 LENS_API_TOKEN（lens.org 免费申请）',
   epo_ops: '需在 .env 配置 EPO_CONSUMER_KEY + EPO_CONSUMER_SECRET（ops.epo.org 免费申请）',
-  soopat: '需在 .env 配置 SOOPAT_COOKIES（Edge/Chrome F12 → 网络 → 任意请求 → Cookie 请求头）',
+  soopat: '需在 .env 配置 SOOPAT_EMAIL + SOOPAT_PASSWORD（自动登录）或 SOOPAT_COOKIES（手动）',
   semantic_scholar: '频率限制（429），已降低优先级',
   arxiv: '国内访问受限',
   openalex_zh: '中文论文专用（chinese_first + 中文描述时自动启用，使用 OpenAlex language:zh 过滤）',

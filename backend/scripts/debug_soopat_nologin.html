@@ -1,0 +1,159 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml" >
+<head>
+    
+    <title>登陆_SooPAT 专利搜索</title>
+    <meta name="keywords" content="登陆_SooPAT 专利搜索,专业好用的中文专利搜索引擎"/>
+    <meta name="description" content="登陆_SooPAT 专利搜索,专利搜索,专利查询,检索,下载"/>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" /><link href="/Combres/HomeIndexCss?v=17swsPlhobtEGc5-aRYxBU3tONvkTtscotn37Lv_wt01" rel="stylesheet"/>
+
+    <script src="/scripts/jquery-1.8.3.min.js" type="text/javascript"></script>
+    <script src="/Combres/HomeIndexJS?v=PQuNDhaQW_zKoMFQQGYDSmEwqMMyrE--XmEgp7Z_fhE1"></script>
+
+</head>
+<body>
+    
+<div class='bar'>
+    <a href="/Home/Index" class="lnk">中国专利搜索 </a>
+    <a href="/Patent/Index" class="lnk">世界专利搜索 </a>
+    <a href="/IPC/Index" class="lnk">专利分类查询 </a>
+    <a href="/Patent/Citation" class="lnk">专利引用检索 </a>
+    <a href="/Patent/Family" class="lnk">专利族检索 </a>
+</div>
+<div class="login">
+    <span id='h_ct'>
+        <a href='/account/login'>高级用户登录</a> | 
+        
+    </span>
+    <a href="#" onclick="ToFT();">繁</a> | <a href="#" onclick="ToJT();">简</a>
+</div>
+<div class="line"></div>
+
+    <table width="100%" border="0" cellpadding="2" cellspacing="0">
+    <tr>
+        <td colspan="2"><img width="1" height="2" /></td>
+    </tr>
+    <tr>
+        <td valign="top" width="1%"><a href='http://www.soopat.com'><img src='/content/images/common/middlelogo.gif' border="0" align="left" alt="Soopat" /></a> </td>
+        <td valign="top">
+            <table width="100%" border="0" cellpadding="0" cellspacing="0">
+            <tr>
+                <td colspan="2" style="height:15px;"><img width="1" height="15" alt="" /></td>
+            </tr>
+            <tr bgcolor="#3366cc" style="height:1px;">
+                <td><img height="1" width="1" /></td>
+            </tr>
+            <tr bgcolor="#e5ecf9">
+                <td class="topTitle"><b>登陆</b> </td>
+            </tr>
+            <tr>
+                <td colspan="2"><img width="1" height="5" alt="" /></td>
+            </tr>
+            </table>
+        </td>
+    </tr>
+    </table>
+    
+<br/><br/>
+<table width="70%" cellspacing="1" cellpadding="5" border="0" align="center">
+<tbody><tr>
+    <td width="50%" valign="top">
+        <form method="post" action="/Account/Login">
+        <div>
+        <table width="100%" cellspacing="3" cellpadding="5" border="0" class="form-noindent" style='height: 135px;'>
+        <tbody><tr>
+            <td valign="top" nowrap="nowrap" bgcolor="#e8eefa" style="text-align: center;">
+            <div class="loginBox">
+                <table cellspacing="0" cellpadding="1" border="0" align="center">
+                <tbody><tr>
+                    <td align="center" colspan="2">
+                    <table><tbody>
+                    <tr><td valign="top"></td><td valign="middle"><font size="-0"><b>SooPAT高级帐户</b></font></td></tr>
+                    </tbody></table>
+                    </td>
+                </tr>
+                <tr><td align="center" colspan="2"></td></tr>
+                <tr>
+                    <td align="right" style="width:80px;">用户名/手机号/邮箱：</td>
+                    <td><input id="Email" maxlength="50" name="Email" size="18" style="width:140px;" type="text" value="" /></td>
+                </tr>
+                <tr><td/><td align="left"></td></tr>
+                <tr>
+                    <td align="right">密码：</td>
+                    <td><input id="Password" maxlength="20" name="Password" size="18" style="width:140px;" type="password" /></td>
+                </tr>
+                <tr>
+                    <td></td><td align="left" style="text-wrap:wrap;"><input id="ReturnUrl" name="ReturnUrl" type="hidden" value="https://www.soopat.com/Home/Result?SearchWord=锂电池" /><input id="Kickout" name="Kickout" type="hidden" value="" /></td>
+                </tr>
+                <tr>
+                    <td valign="top" align="right"></td>
+                    <td align="left"></td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td align="left"><input type="submit" value="登录" id="btnLogin" /> <input type="button" value="注册" onclick="window.location.href='https://www.soopat.com/gn.html'" />
+                    <a href="/Guide/ForgotPwd" target="_blank" title="点此可通过2种方式重设密码">忘记密码？</a>
+                    </td>
+                </tr>
+                </tbody></table>
+            </div>
+            </td>
+        </tr>
+        </tbody></table>
+        </div>
+    </form>
+    <br/>
+    </td>
+    <td valign="top" align="center" style="padding-left: 10px;">
+    
+    <table width="100%" cellspacing="3" cellpadding="6" border="0" class="form-noindent" style='height: 135px;'>
+    <tbody><tr>
+    <td bgcolor="#e8eefa" align="center">
+    <b>不是 SooPAT 高级用户吗？</b><br/>
+    <a href="https://www.soopat.com/gn.html"><b>点击详情</b></a>
+    </td>
+    </tr>
+    </tbody></table>
+    </td>
+</tr>
+</tbody></table>
+<br/><br/><br/><br/><br/><br/><br/><br/><br/>
+<script type="text/javascript">
+    try {
+        JTPYStr();
+    }
+    catch (err) {
+        var txt = "我们检测到您的浏览器阻止了我们网站的图片及格式信息在您的电脑上正确显示！\r\n";
+        txt += "绝大多数可能是您的浏览器安装了一些阻止广告的插件（比如adblock，或者某些浏览器自带的拦截插件），这些插件错误的拦截页面的网页信息，造成网页不能正常显示。您在访问时，可暂时关闭您浏览器中的阻止广告的插件（或调高这些插件的拦截级别）。\r\n";
+        txt += "如果仍然遇到问题，或不知道如何关闭拦截插接，可联系我们。客服QQ:657350181。";
+        alert(txt);
+    }
+</script>
+
+    
+<table width="100%" cellspacing="0" cellpadding="2" border="0">
+    <tr>
+        <td align="center">
+            <span class="footerlink">
+                <a href="/Guide/About">关于</a> -
+                <a href="/Guide/Contact">联系我们</a> -
+                <a href="/Guide/Duty">免责声明</a>
+            </span>
+        </td>
+    </tr>
+    <tr>
+        <td align="center">
+            <span class="footercopyright" id="footercopyright">Copyright © 2003 - 2022 <b>SooPAT Inc.</b> All rights reserved.</span>
+        </td>
+    </tr>
+    
+</table>
+<script language="javascript">
+        document.getElementById("footercopyright").innerHTML = "Copyright © 2003 - " + new Date().getFullYear() + " <b>SooPAT Inc.</b> All rights reserved.";
+</script>
+
+</body>
+</html>

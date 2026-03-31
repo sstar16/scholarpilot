@@ -139,13 +139,21 @@ class FetcherRegistry:
             "language": "en",
             "phase": 1,
         },
-        "baidu_xueshu": {
-            "name": "百度学术",
-            "description": "百度学术中文文献检索（HTML 解析，中文论文主要来源）",
+        "openalex_zh": {
+            "name": "OpenAlex (中文)",
+            "description": "OpenAlex 中文论文专用：language:zh 过滤 + 原始中文查询词",
             "doc_type": "paper",
             "category": "literature",
             "language": "zh",
             "phase": 1,
+        },
+        "baidu_xueshu": {
+            "name": "百度学术",
+            "description": "暂不可用（百度 JS challenge 需要浏览器，httpx 无法绕过）",
+            "doc_type": "paper",
+            "category": "literature",
+            "language": "zh",
+            "phase": 2,
         },
         # Phase 2
         "wanfang": {

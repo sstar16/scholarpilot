@@ -247,11 +247,11 @@ def _select_sources(
     if not added and "arxiv" not in disabled:
         sources.append("arxiv")
 
-    # chinese_first scope + 中文描述：优先加入中文数据源
+    # chinese_first scope + 中文描述：加入中文专用 OpenAlex（language:zh + 原始中文查询词）
     if scope == "chinese_first" and has_chinese_desc:
-        for zh_src in ["baidu_xueshu"]:
+        for zh_src in ["openalex_zh"]:
             if zh_src not in sources and zh_src not in disabled:
-                sources.insert(0, zh_src)  # 放到最前面，优先抓取
+                sources.append(zh_src)
 
     # 始终尝试加入专利和临床试验来源
     for extra in ["lens_patent", "clinical_trials"]:

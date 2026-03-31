@@ -14,10 +14,10 @@ from app.services.relevance_engine import select_top_documents, deduplicate_docs
 from app.services.metadata_enricher import enrich_missing_abstracts
 from app.services.query_builder import QueryPlan
 
-# 语言为 zh 的数据源，优先使用原始中文查询词
+# 这些数据源使用原始中文查询词（不翻译）
 _CHINESE_SOURCES = {
     k for k, v in FetcherRegistry.SOURCES.items() if v.get("language") == "zh"
-}
+} | {"openalex_zh"}  # openalex_zh 也使用原始中文查询词
 
 
 async def execute_search(

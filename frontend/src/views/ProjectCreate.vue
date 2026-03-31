@@ -198,7 +198,7 @@ const ALL_SOURCES = [
   { id: 'crossref',         label: 'Crossref',            desc: '期刊引用数据' },
   { id: 'semantic_scholar', label: 'Semantic Scholar',    desc: 'AI语义检索' },
   { id: 'dblp',             label: 'DBLP',                desc: 'CS顶级会议/期刊（免费）' },
-  { id: 'baidu_xueshu',     label: '百度学术',             desc: '中文论文（需中文优先）' },
+  { id: 'openalex_zh',      label: 'OpenAlex 中文',        desc: '中文论文（chinese_first 自动启用）' },
   { id: 'arxiv',            label: 'arXiv',               desc: '物理/CS/数学预印本' },
   { id: 'biorxiv',          label: 'bioRxiv',             desc: '生物预印本' },
   { id: 'medrxiv',          label: 'medRxiv',             desc: '医学预印本' },

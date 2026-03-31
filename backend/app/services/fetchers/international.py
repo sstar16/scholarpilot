@@ -122,6 +122,8 @@ class OpenAlexFetcher(AbstractFetcher):
             filters.append(f"from_publication_date:{year_from}-01-01")
         if year_to:
             filters.append(f"to_publication_date:{year_to}-12-31")
+        if language == "zh":
+            filters.append("language:zh")
         if filters:
             params["filter"] = ",".join(filters)
 
@@ -172,6 +174,17 @@ class OpenAlexFetcher(AbstractFetcher):
             return " ".join(w for _, w in word_positions)
         except Exception:
             return None
+
+
+class OpenAlexZhFetcher(OpenAlexFetcher):
+    """OpenAlex 中文论文专用：自动加 language:zh 过滤，使用原始中文查询词"""
+    source_id = "openalex_zh"
+
+    async def fetch(self, query: str, max_results=20, year_from=None, year_to=None, language=None) -> List[Dict]:
+        results = await super().fetch(query, max_results, year_from, year_to, language="zh")
+        for doc in results:
+            doc["source"] = "openalex_zh"
+        return results
 
 
 class SemanticScholarFetcher(AbstractFetcher):
@@ -397,5 +410,7 @@ ALL_FETCHERS: Dict[str, AbstractFetcher] = {
     "clinical_trials": ClinicalTrialsFetcher(),
     "crossref": CrossrefFetcher(),
     "dblp": DBLPFetcher(),
-    "baidu_xueshu": BaiduXueshuFetcher(),
+    "openalex_zh": OpenAlexZhFetcher(),
+    # baidu_xueshu: 百度安全验证（JS challenge）需要浏览器，暂时禁用
+    # "baidu_xueshu": BaiduXueshuFetcher(),
 }

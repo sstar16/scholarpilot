@@ -182,7 +182,7 @@ const ALL_SOURCES = [
   { id: 'crossref',         label: 'Crossref',            desc: '期刊引用数据' },
   { id: 'semantic_scholar', label: 'Semantic Scholar',    desc: 'AI语义检索' },
   { id: 'dblp',             label: 'DBLP',                desc: 'CS顶级会议/期刊（免费）' },
-  { id: 'baidu_xueshu',     label: '百度学术',             desc: '中文论文（需中文优先）' },
+  { id: 'openalex_zh',      label: 'OpenAlex 中文',        desc: '中文论文（chinese_first 自动启用）' },
   { id: 'arxiv',            label: 'arXiv',               desc: '物理/CS/数学预印本' },
   { id: 'biorxiv',          label: 'bioRxiv',             desc: '生物预印本' },
   { id: 'medrxiv',          label: 'medRxiv',             desc: '医学预印本' },
@@ -199,7 +199,7 @@ const SOURCE_HINTS: Record<string, string> = {
   lens_patent: '需在 .env 配置 LENS_API_TOKEN（lens.org 免费申请）',
   semantic_scholar: '频率限制（429），已降低优先级',
   arxiv: '国内访问受限',
-  baidu_xueshu: '中文论文（仅 chinese_first 模式下触发，使用中文原始查询词）',
+  openalex_zh: '中文论文专用（chinese_first + 中文描述时自动启用，使用 OpenAlex language:zh 过滤）',
   dblp: 'CS顶会/期刊（CVPR/NeurIPS/ACL等），无需鉴权',
 }
 

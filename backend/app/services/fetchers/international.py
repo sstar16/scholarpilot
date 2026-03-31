@@ -148,7 +148,7 @@ class OpenAlexFetcher(AbstractFetcher):
                             "authors": authors,
                             "abstract": abstract,
                             "publication_date": work.get("publication_date"),
-                            "journal": (work.get("primary_location") or {}).get("source", {}).get("display_name") if work.get("primary_location") else None,
+                            "journal": ((work.get("primary_location") or {}).get("source") or {}).get("display_name"),
                             "doi": work.get("doi"),
                             "url": work.get("id"),
                             "citation_count": work.get("cited_by_count", 0),

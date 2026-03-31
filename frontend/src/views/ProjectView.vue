@@ -105,90 +105,137 @@
                 </el-tooltip>
               </div>
 
-              <!-- Dev View Panel -->
+              <!-- Dev View: Pipeline -->
               <transition name="el-zoom-in-top">
-                <div v-if="devViewOpen" class="dev-view-panel">
-                  <div class="dev-view-header">
-                    <el-icon style="font-size:15px"><DataAnalysis /></el-icon>
-                    <span>检索详情 Dev View</span>
+                <div v-if="devViewOpen" class="dev-pipeline">
+                  <div class="dev-pipeline-header">
+                    <el-icon><DataAnalysis /></el-icon>
+                    <span>检索 Pipeline</span>
                     <el-tag size="small" type="info" effect="dark" style="margin-left:8px">Round {{ currentRound?.round_number }}</el-tag>
                   </div>
 
-                  <!-- Query Plan -->
-                  <div v-if="currentRound?.search_queries" class="dev-section">
-                    <div class="dev-section-title">查询计划</div>
-                    <div class="dev-plan-grid">
-                      <div class="dev-plan-row">
-                        <span class="dev-label">翻译查询词</span>
-                        <span class="dev-value dev-highlight">{{ currentRound.search_queries.base_query }}</span>
-                      </div>
-                      <div v-if="currentRound.search_queries.original_chinese_query" class="dev-plan-row">
-                        <span class="dev-label">原始中文词</span>
-                        <span class="dev-value">{{ currentRound.search_queries.original_chinese_query }}</span>
-                      </div>
-                      <div class="dev-plan-row">
-                        <span class="dev-label">扩展词汇</span>
-                        <span class="dev-value">
-                          <el-tag v-for="t in (currentRound.search_queries.expanded_terms || [])" :key="t" size="small" effect="plain" style="margin-right:4px;margin-bottom:2px">{{ t }}</el-tag>
-                        </span>
-                      </div>
-                      <div v-if="currentRound.search_queries.exclude_terms?.length" class="dev-plan-row">
-                        <span class="dev-label">排除词</span>
-                        <span class="dev-value">
-                          <el-tag v-for="t in currentRound.search_queries.exclude_terms" :key="t" size="small" type="danger" effect="plain" style="margin-right:4px">{{ t }}</el-tag>
-                        </span>
-                      </div>
-                      <div class="dev-plan-row">
-                        <span class="dev-label">时间范围</span>
-                        <span class="dev-value">{{ currentRound.search_queries.year_from ?? '不限' }} — {{ currentRound.search_queries.year_to ?? '不限' }}</span>
-                      </div>
-                      <div class="dev-plan-row">
-                        <span class="dev-label">语言策略</span>
-                        <span class="dev-value">{{ currentRound.search_queries.language_scope }}</span>
-                      </div>
-                      <div class="dev-plan-row">
-                        <span class="dev-label">每源上限</span>
-                        <span class="dev-value">{{ currentRound.search_queries.max_per_source }} 篇</span>
+                  <!-- STEP 1: 用户输入 -->
+                  <div class="dev-step">
+                    <div class="dev-step-num">1</div>
+                    <div class="dev-step-body">
+                      <div class="dev-step-title">用户输入</div>
+                      <div class="dev-kv-list">
+                        <div class="dev-kv">
+                          <span class="dev-k">项目描述</span>
+                          <span class="dev-v">{{ (project?.description || '').slice(0, 100) }}{{ (project?.description?.length ?? 0) > 100 ? '…' : '' }}</span>
+                        </div>
+                        <div class="dev-kv">
+                          <span class="dev-k">研究领域</span>
+                          <span class="dev-v">{{ (project?.domains || [project?.domain]).join(' · ') }}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
+                  <div class="dev-connector"><span>↓</span></div>
 
-                  <!-- Per-source breakdown -->
-                  <div v-if="Object.keys(searchStore.sourceStats).length > 0" class="dev-section">
-                    <div class="dev-section-title">各数据源响应</div>
-                    <div class="dev-source-cards">
-                      <div
-                        v-for="(stat, sourceId) in searchStore.sourceStats"
-                        :key="sourceId"
-                        class="dev-source-card"
-                        :class="stat.status === 'ok' ? 'dev-card-ok' : 'dev-card-error'"
-                      >
-                        <div class="dev-card-header">
-                          <span class="dev-card-name">{{ sourceId }}</span>
-                          <div style="display:flex;gap:4px">
-                            <el-tag :type="stat.status === 'ok' ? 'success' : 'danger'" size="small" effect="plain">
-                              {{ stat.status === 'ok' ? stat.count + ' 篇' : '失败' }}
-                            </el-tag>
-                            <el-tag v-if="stat.execution_ms != null" type="info" size="small" effect="plain">{{ stat.execution_ms }}ms</el-tag>
+                  <!-- STEP 2: LLM 翻译 & 查询构建 -->
+                  <div class="dev-step">
+                    <div class="dev-step-num">2</div>
+                    <div class="dev-step-body">
+                      <div class="dev-step-title">LLM 翻译 & 查询构建</div>
+                      <template v-if="currentRound?.search_queries">
+                        <div class="dev-kv-list">
+                          <div v-if="currentRound.search_queries.original_chinese_query" class="dev-kv">
+                            <span class="dev-k">中文核心词</span>
+                            <code class="dev-code">{{ currentRound.search_queries.original_chinese_query }}</code>
+                          </div>
+                          <div class="dev-kv">
+                            <span class="dev-k">英文查询词</span>
+                            <code class="dev-code dev-code-primary">{{ currentRound.search_queries.base_query }}</code>
+                          </div>
+                          <div class="dev-kv">
+                            <span class="dev-k">扩展词汇</span>
+                            <span class="dev-v dev-tags">
+                              <el-tag v-for="t in (currentRound.search_queries.expanded_terms || [])" :key="t" size="small" effect="plain" class="dev-tag">{{ t }}</el-tag>
+                            </span>
+                          </div>
+                          <div v-if="currentRound.search_queries.exclude_terms?.length" class="dev-kv">
+                            <span class="dev-k">排除词</span>
+                            <span class="dev-v dev-tags">
+                              <el-tag v-for="t in currentRound.search_queries.exclude_terms" :key="t" size="small" type="danger" effect="plain" class="dev-tag">{{ t }}</el-tag>
+                            </span>
+                          </div>
+                          <div class="dev-kv">
+                            <span class="dev-k">时间范围</span>
+                            <span class="dev-v">{{ currentRound.search_queries.year_from ?? '不限' }} — {{ currentRound.search_queries.year_to ?? '今' }}</span>
+                          </div>
+                          <div class="dev-kv">
+                            <span class="dev-k">语言策略</span>
+                            <span class="dev-v">{{ langScopeLabel(currentRound.search_queries.language_scope) }}</span>
+                          </div>
+                          <div class="dev-kv">
+                            <span class="dev-k">每源上限</span>
+                            <span class="dev-v">{{ currentRound.search_queries.max_per_source }} 篇</span>
                           </div>
                         </div>
-                        <div v-if="stat.query_sent" class="dev-card-query">
-                          <span class="dev-label">查询词</span>
-                          <code class="dev-code">{{ stat.query_sent }}</code>
-                        </div>
-                        <div v-if="stat.year_from || stat.year_to" class="dev-card-meta">
-                          年份 {{ stat.year_from ?? '不限' }}–{{ stat.year_to ?? '不限' }} · 上限 {{ stat.max_requested }} 篇
-                        </div>
-                        <div v-if="stat.error" class="dev-card-errmsg">{{ stat.error }}</div>
-                      </div>
+                      </template>
+                      <div v-else class="dev-no-data">本轮数据未记录，请重启 worker 后新开一轮</div>
                     </div>
                   </div>
+                  <div class="dev-connector"><span>↓ 并行发送</span></div>
 
-                  <!-- Summary -->
-                  <div class="dev-summary">
-                    候选总数：<strong>{{ currentRound?.total_candidates ?? 0 }}</strong> 篇
-                    &nbsp;→&nbsp;
-                    最终筛选：<strong>{{ currentRound?.selected_count ?? searchStore.documents.length }}</strong> 篇
+                  <!-- STEP 3: 各数据源 -->
+                  <div class="dev-step">
+                    <div class="dev-step-num">3</div>
+                    <div class="dev-step-body">
+                      <div class="dev-step-title">
+                        并行检索
+                        <span class="dev-step-sub">{{ Object.keys(searchStore.sourceStats).length }} 个数据源</span>
+                      </div>
+                      <div v-if="Object.keys(searchStore.sourceStats).length > 0" class="dev-src-table">
+                        <div class="dev-src-thead">
+                          <span class="c-src">数据源</span>
+                          <span class="c-query">实际发出的查询词</span>
+                          <span class="c-count">结果</span>
+                          <span class="c-time">耗时</span>
+                        </div>
+                        <div
+                          v-for="(stat, srcId) in sortedSourceStats"
+                          :key="srcId"
+                          class="dev-src-row"
+                          :class="{ 'row-ok': stat.status === 'ok' && stat.count > 0, 'row-zero': stat.status === 'ok' && stat.count === 0, 'row-err': stat.status === 'error' }"
+                        >
+                          <span class="c-src">
+                            <span class="src-dot" :class="stat.status === 'ok' && stat.count > 0 ? 'dot-ok' : stat.status === 'error' ? 'dot-err' : 'dot-zero'"></span>
+                            {{ srcId }}
+                          </span>
+                          <span class="c-query">
+                            <code v-if="stat.query_sent && stat.status !== 'error'" class="dev-code-sm">{{ stat.query_sent }}</code>
+                            <span v-if="stat.error" class="dev-err-txt">{{ stat.error.slice(0, 80) }}</span>
+                          </span>
+                          <span class="c-count" :class="stat.count > 0 ? 'cnt-ok' : 'cnt-zero'">{{ stat.count ?? 0 }} 篇</span>
+                          <span class="c-time">{{ stat.execution_ms != null ? stat.execution_ms + 'ms' : '—' }}</span>
+                        </div>
+                      </div>
+                      <div v-else class="dev-no-data">暂无数据</div>
+                    </div>
+                  </div>
+                  <div class="dev-connector"><span>↓ 去重 · 补全 · 评分</span></div>
+
+                  <!-- STEP 4: 后处理 & 最终结果 -->
+                  <div class="dev-step">
+                    <div class="dev-step-num">4</div>
+                    <div class="dev-step-body">
+                      <div class="dev-step-title">后处理 & 最终结果</div>
+                      <div class="dev-funnel">
+                        <div class="funnel-node">
+                          <span class="funnel-num">{{ currentRound?.total_candidates ?? '?' }}</span>
+                          <span class="funnel-label">原始候选</span>
+                        </div>
+                        <span class="funnel-op">→ 跨源去重 →</span>
+                        <span class="funnel-op">元数据补全 →</span>
+                        <span class="funnel-op">相关性评分 →</span>
+                        <div class="funnel-node funnel-final">
+                          <span class="funnel-num">{{ currentRound?.selected_count ?? searchStore.documents.length }}</span>
+                          <span class="funnel-label">最终呈现</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </transition>
@@ -346,6 +393,16 @@ async function saveSettings() {
 const project = computed(() => projectStore.current)
 const currentRound = computed(() => searchStore.currentRound)
 
+const sortedSourceStats = computed(() => {
+  const entries = Object.entries(searchStore.sourceStats) as [string, any][]
+  entries.sort((a, b) => (b[1].count ?? 0) - (a[1].count ?? 0))
+  return Object.fromEntries(entries)
+})
+
+function langScopeLabel(scope: string) {
+  return ({ chinese_first: '中文优先', international: '国际英文', bilingual: '中英双语', global: '全球多语言' } as any)[scope] ?? scope
+}
+
 const isProcessing = computed(() =>
   ['searching', 'summarizing'].includes(currentRound.value?.status ?? '')
 )
@@ -502,100 +559,133 @@ onMounted(async () => {
 .settings-source-label { font-size: 13px; font-weight: 500; display: block; }
 .settings-source-desc { font-size: 11px; color: #909399; display: block; }
 
-/* Dev View */
-.dev-view-panel {
-  background: #1a1d23;
-  border-radius: 8px;
-  padding: 16px 20px;
+/* ── Dev View Pipeline ── */
+.dev-pipeline {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 18px 20px;
   margin-bottom: 16px;
-  border: 1px solid #2d3139;
   color: #c9d1d9;
   font-size: 13px;
 }
-.dev-view-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #58a6ff;
-  margin-bottom: 16px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #2d3139;
+.dev-pipeline-header {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 700; color: #58a6ff;
+  margin-bottom: 18px; padding-bottom: 12px;
+  border-bottom: 1px solid #21262d;
 }
-.dev-section { margin-bottom: 16px; }
-.dev-section-title {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #8b949e;
-  margin-bottom: 10px;
-}
-.dev-plan-grid { display: flex; flex-direction: column; gap: 6px; }
-.dev-plan-row { display: flex; align-items: flex-start; gap: 12px; }
-.dev-label {
-  font-size: 11px;
-  color: #8b949e;
-  min-width: 72px;
-  padding-top: 2px;
-  flex-shrink: 0;
-}
-.dev-value { color: #e6edf3; flex: 1; }
-.dev-highlight { color: #79c0ff; font-weight: 500; font-family: monospace; }
 
-.dev-source-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 10px;
+/* Step block */
+.dev-step {
+  display: flex; gap: 14px; align-items: flex-start;
+  background: #161b22; border: 1px solid #21262d;
+  border-radius: 8px; padding: 14px 16px;
 }
-.dev-source-card {
-  background: #0d1117;
-  border-radius: 6px;
-  padding: 10px 12px;
-  border: 1px solid #2d3139;
+.dev-step-num {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #1f6feb; color: #fff;
+  font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
 }
-.dev-card-ok { border-left: 3px solid #238636; }
-.dev-card-error { border-left: 3px solid #da3633; }
-.dev-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
+.dev-step-body { flex: 1; min-width: 0; }
+.dev-step-title {
+  font-size: 13px; font-weight: 600; color: #e6edf3;
+  margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
 }
-.dev-card-name { font-weight: 600; color: #c9d1d9; font-size: 13px; }
-.dev-card-query {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 4px;
+.dev-step-sub { font-size: 11px; font-weight: 400; color: #8b949e; }
+
+/* Connector between steps */
+.dev-connector {
+  text-align: center; color: #8b949e;
+  font-size: 11px; padding: 4px 0;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
 }
+.dev-connector span {
+  background: #161b22; border: 1px solid #21262d;
+  border-radius: 20px; padding: 2px 12px;
+}
+
+/* KV rows */
+.dev-kv-list { display: flex; flex-direction: column; gap: 6px; }
+.dev-kv { display: flex; align-items: flex-start; gap: 10px; }
+.dev-k {
+  font-size: 11px; color: #8b949e;
+  min-width: 76px; flex-shrink: 0; padding-top: 2px;
+}
+.dev-v { color: #c9d1d9; flex: 1; }
+.dev-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.dev-tag { font-family: monospace; }
+
+/* Code */
 .dev-code {
-  background: #161b22;
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-family: monospace;
-  font-size: 12px;
-  color: #a5d6ff;
-  word-break: break-all;
-  flex: 1;
+  font-family: 'Consolas', monospace; font-size: 12px;
+  background: #0d1117; border: 1px solid #21262d;
+  border-radius: 4px; padding: 2px 7px;
+  color: #79c0ff;
 }
-.dev-card-meta { font-size: 11px; color: #8b949e; margin-top: 4px; }
-.dev-card-errmsg {
-  font-size: 11px;
-  color: #f85149;
-  margin-top: 6px;
-  background: #1c0a0a;
-  padding: 4px 6px;
-  border-radius: 4px;
-  word-break: break-all;
+.dev-code-primary { color: #a5f3c0; font-size: 13px; font-weight: 500; }
+.dev-code-sm {
+  font-family: 'Consolas', monospace; font-size: 11.5px;
+  color: #79c0ff; word-break: break-all;
 }
-.dev-summary {
-  padding-top: 12px;
-  border-top: 1px solid #2d3139;
-  font-size: 13px;
-  color: #8b949e;
-  text-align: right;
+
+/* Source table */
+.dev-src-table { width: 100%; border-collapse: collapse; }
+.dev-src-thead, .dev-src-row {
+  display: grid;
+  grid-template-columns: 130px 1fr 60px 70px;
+  align-items: center;
+  gap: 0;
 }
-.dev-summary strong { color: #c9d1d9; }
+.dev-src-thead {
+  font-size: 11px; color: #8b949e; font-weight: 600;
+  padding: 4px 8px 6px; border-bottom: 1px solid #21262d;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.dev-src-row {
+  padding: 7px 8px;
+  border-bottom: 1px solid #21262d;
+  transition: background 0.15s;
+}
+.dev-src-row:last-child { border-bottom: none; }
+.dev-src-row:hover { background: #1c2128; }
+.row-ok { }
+.row-zero { opacity: 0.65; }
+.row-err { background: #1c0a0a; }
+
+.c-src { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: #c9d1d9; }
+.c-query { font-size: 12px; color: #8b949e; padding-right: 8px; }
+.c-count { font-size: 12px; text-align: right; padding-right: 8px; }
+.c-time { font-size: 11px; color: #8b949e; text-align: right; }
+.cnt-ok { color: #3fb950; font-weight: 600; }
+.cnt-zero { color: #8b949e; }
+
+.src-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.dot-ok { background: #3fb950; }
+.dot-zero { background: #484f58; }
+.dot-err { background: #f85149; }
+
+.dev-err-txt { font-size: 11px; color: #f85149; word-break: break-all; }
+
+/* Funnel */
+.dev-funnel {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 8px; padding: 10px 0 4px;
+}
+.funnel-node {
+  display: flex; flex-direction: column; align-items: center;
+  background: #21262d; border-radius: 8px; padding: 8px 16px;
+  min-width: 72px;
+}
+.funnel-final { background: #1a3d1f; border: 1px solid #238636; }
+.funnel-num { font-size: 22px; font-weight: 700; color: #e6edf3; line-height: 1; }
+.funnel-final .funnel-num { color: #3fb950; }
+.funnel-label { font-size: 11px; color: #8b949e; margin-top: 3px; }
+.funnel-op { font-size: 12px; color: #8b949e; white-space: nowrap; }
+
+.dev-no-data { font-size: 12px; color: #484f58; padding: 6px 0; }
 </style>

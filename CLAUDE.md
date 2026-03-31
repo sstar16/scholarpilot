@@ -95,6 +95,7 @@ Celery Beat 每天早6点:
 | PubMed (NCBI) | ❌ 封锁 | `eutils.ncbi.nlm.nih.gov` TLS 握手超时，用 EuropePMC 替代 |
 | arXiv | ❌ 封锁 | `export.arxiv.org` 超时，默认禁用 |
 | Lens.org 专利 | ⚠️ 需 token | `LENS_API_TOKEN` 未配置时返回空，lens.org 免费申请 |
+| **EPO OPS** | ⚠️ 需 key | 欧洲专利局官方 API，EP/WO，需 `EPO_CONSUMER_KEY` + `EPO_CONSUMER_SECRET`（ops.epo.org 免费注册） |
 
 通过 `.env` 的 `DISABLED_SOURCES=pubmed,arxiv,biorxiv,medrxiv,semantic_scholar` 控制禁用列表，无需改代码。`query_builder._select_sources()` 读取此变量过滤。
 

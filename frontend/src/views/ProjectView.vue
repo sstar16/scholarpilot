@@ -187,6 +187,7 @@ const ALL_SOURCES = [
   { id: 'biorxiv',          label: 'bioRxiv',             desc: '生物预印本' },
   { id: 'medrxiv',          label: 'medRxiv',             desc: '医学预印本' },
   { id: 'lens_patent',      label: 'Lens.org 专利',       desc: '全球专利 CN/US/EP/WO（需 LENS_API_TOKEN）' },
+  { id: 'epo_ops',          label: 'EPO OPS 专利',        desc: '欧洲专利局 EP/WO（需 EPO_CONSUMER_KEY）' },
   { id: 'clinical_trials',  label: 'ClinicalTrials.gov',  desc: '临床试验注册' },
 ]
 
@@ -197,6 +198,7 @@ const settingsForm = reactive({ disabledSources: [] as string[] })
 const SOURCE_HINTS: Record<string, string> = {
   pubmed: '国内访问受限（TLS超时），用 Europe PMC 替代',
   lens_patent: '需在 .env 配置 LENS_API_TOKEN（lens.org 免费申请）',
+  epo_ops: '需在 .env 配置 EPO_CONSUMER_KEY + EPO_CONSUMER_SECRET（ops.epo.org 免费申请）',
   semantic_scholar: '频率限制（429），已降低优先级',
   arxiv: '国内访问受限',
   openalex_zh: '中文论文专用（chinese_first + 中文描述时自动启用，使用 OpenAlex language:zh 过滤）',

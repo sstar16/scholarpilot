@@ -188,6 +188,14 @@ class FetcherRegistry:
             "language": "multilingual",
             "phase": 1,
         },
+        "epo_ops": {
+            "name": "EPO OPS (欧洲专利局)",
+            "description": "欧洲专利局官方 API，覆盖 EP/WO，需配置 EPO_CONSUMER_KEY/SECRET（免费）",
+            "doc_type": "patent",
+            "category": "patents",
+            "language": "en",
+            "phase": 1,
+        },
         "cnipa": {
             "name": "CNIPA (中国专利)",
             "description": "中国国家知识产权局专利数据库",

@@ -203,6 +203,7 @@ const ALL_SOURCES = [
   { id: 'biorxiv',          label: 'bioRxiv',             desc: '生物预印本' },
   { id: 'medrxiv',          label: 'medRxiv',             desc: '医学预印本' },
   { id: 'lens_patent',      label: 'Lens.org 专利',       desc: '全球专利 CN/US/EP/WO（需 LENS_API_TOKEN）' },
+  { id: 'epo_ops',          label: 'EPO OPS 专利',        desc: '欧洲专利局 EP/WO（需 EPO_CONSUMER_KEY）' },
   { id: 'clinical_trials',  label: 'ClinicalTrials.gov',  desc: '临床试验注册' },
 ]
 

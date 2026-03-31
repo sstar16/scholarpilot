@@ -48,6 +48,7 @@ class SooPatFetcher(AbstractFetcher):
         self._manual_cookies_str = os.getenv("SOOPAT_COOKIES", "")
         # 内存中缓存登录后的 cookies（进程生命周期内复用）
         self._cached_cookies: Optional[httpx.Cookies] = None
+        self._last_html: Optional[str] = None  # 调试用：保存最后一次 HTTP 响应 HTML
 
     # ------------------------------------------------------------------ #
     #  登录                                                                #
@@ -102,8 +103,9 @@ class SooPatFetcher(AbstractFetcher):
             )
 
             # 登录成功：重定向后应落在非登录页；若还在 /Account/Login 说明失败
+            self._last_html = r2.text  # 保存登录响应以便诊断
             if "Account/Login" in str(r2.url):
-                logger.warning("[SooPat] 登录失败（用户名或密码错误，或触发验证码）")
+                logger.warning("[SooPat] 登录失败（用户名或密码错误，或触发验证码）, response_len=%d", len(r2.text))
                 return None
 
             # 提取 cookies（client 会自动维护 cookie jar）
@@ -205,6 +207,7 @@ class SooPatFetcher(AbstractFetcher):
                         },
                     )
 
+                    self._last_html = r.text
                     logger.info("[SooPat] 第%d页 URL=%s status=%d html_len=%d",
                                 page + 1, str(r.url)[:120], r.status_code, len(r.text))
 

@@ -59,6 +59,9 @@ class SooPatFetcher(AbstractFetcher):
         流程：GET 登录页（获取 hidden 字段）→ POST 表单 → 检查跳转
         """
         try:
+            # Step 0：先访问首页，让服务端设置 _d_id 等必要 cookies
+            await client.get(SOOPAT_BASE + "/", headers={"User-Agent": _UA}, timeout=10.0)
+
             # Step 1：获取登录页（含 ReturnUrl/Kickout hidden 字段）
             r = await client.get(SOOPAT_LOGIN_URL, headers={"User-Agent": _UA}, timeout=10.0)
             if r.status_code != 200:
@@ -82,6 +85,8 @@ class SooPatFetcher(AbstractFetcher):
             # 填入凭证
             payload["Email"] = self._email
             payload["Password"] = self._password
+            # 若账号在其他设备已登录，直接踢除（等同于点击弹窗中的"登录"按钮）
+            payload["Kickout"] = "1"
 
             # Step 2：POST 登录
             r2 = await client.post(
@@ -149,7 +154,7 @@ class SooPatFetcher(AbstractFetcher):
 
         async with httpx.AsyncClient(
             timeout=self.DEFAULT_TIMEOUT,
-            follow_redirects=False,  # 手动处理，检测登录过期
+            follow_redirects=True,
         ) as client:
             # 获取 cookies（优先账号密码自动登录）
             if has_credentials:
@@ -199,19 +204,16 @@ class SooPatFetcher(AbstractFetcher):
                         },
                     )
 
-                    # 检测 session 过期（重定向到登录页）
-                    if r.status_code in (301, 302) and "Account/Login" in r.headers.get("location", ""):
+                    # 检测 session 过期（follow_redirects=True 后落在登录页）
+                    if "Account/Login" in str(r.url):
                         logger.info("[SooPat] session 已过期，尝试重新登录")
                         self._cached_cookies = None
                         if has_credentials:
                             self._cached_cookies = await self._login(client)
                             if self._cached_cookies:
                                 client.cookies.update(self._cached_cookies)
-                                # 重试当前页
-                                r = await client.get(
-                                    SOOPAT_SEARCH_URL, params=params,
-                                    headers={"User-Agent": _UA},
-                                )
+                                r = await client.get(SOOPAT_SEARCH_URL, params=params,
+                                                     headers={"User-Agent": _UA})
                             else:
                                 logger.warning("[SooPat] 重新登录失败，停止")
                                 break

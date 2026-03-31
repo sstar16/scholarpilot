@@ -138,6 +138,9 @@ class BaiduXueshuFetcher(AbstractFetcher):
             follow_redirects=True,
         ) as client:
             try:
+                # 先请求首页获取 session cookie，避免 403
+                await client.get("https://xueshu.baidu.com/")
+
                 while len(papers) < max_results and page < 3:
                     params = {
                         "wd": query,

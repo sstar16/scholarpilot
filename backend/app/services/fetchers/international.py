@@ -396,6 +396,7 @@ from app.services.fetchers.lens import LensPatentFetcher
 from app.services.fetchers.dblp import DBLPFetcher
 from app.services.fetchers.chinese import BaiduXueshuFetcher
 from app.services.fetchers.epo import EPOFetcher
+from app.services.fetchers.soopat import SooPatFetcher
 
 # 注册表：source_id → fetcher 实例
 ALL_FETCHERS: Dict[str, AbstractFetcher] = {
@@ -413,6 +414,7 @@ ALL_FETCHERS: Dict[str, AbstractFetcher] = {
     "dblp": DBLPFetcher(),
     "openalex_zh": OpenAlexZhFetcher(),
     "epo_ops": EPOFetcher(),
+    "soopat": SooPatFetcher(),
     # baidu_xueshu: 百度安全验证（JS challenge）需要浏览器，暂时禁用
     # "baidu_xueshu": BaiduXueshuFetcher(),
 }

@@ -196,6 +196,14 @@ class FetcherRegistry:
             "language": "en",
             "phase": 1,
         },
+        "soopat": {
+            "name": "SooPat (中国专利)",
+            "description": "soopat.com 中国专利检索，CN发明/实用新型/外观设计，需配置 SOOPAT_COOKIES",
+            "doc_type": "patent",
+            "category": "patents",
+            "language": "zh",
+            "phase": 1,
+        },
         "cnipa": {
             "name": "CNIPA (中国专利)",
             "description": "中国国家知识产权局专利数据库",

@@ -204,16 +204,16 @@ DOMAIN_SOURCE_MAP = {
     "computer": ["arxiv", "dblp"],
     "ai": ["arxiv", "dblp"],
     "software": ["dblp"],
-    "biology": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent", "epo_ops"],
-    "medicine": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent", "epo_ops"],
-    "pharmacology": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent", "epo_ops"],
-    "mechanical": ["arxiv", "uspto", "lens_patent", "epo_ops"],
-    "materials": ["arxiv", "uspto", "lens_patent", "epo_ops"],
-    "physics": ["arxiv", "lens_patent", "epo_ops"],
+    "biology": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent", "epo_ops", "soopat"],
+    "medicine": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent", "epo_ops", "soopat"],
+    "pharmacology": ["biorxiv", "medrxiv", "clinical_trials", "lens_patent", "epo_ops", "soopat"],
+    "mechanical": ["arxiv", "uspto", "lens_patent", "epo_ops", "soopat"],
+    "materials": ["arxiv", "uspto", "lens_patent", "epo_ops", "soopat"],
+    "physics": ["arxiv", "lens_patent", "epo_ops", "soopat"],
     "math": ["arxiv"],
     "economics": ["arxiv"],
-    "chemistry": ["uspto", "lens_patent", "epo_ops"],
-    "environment": ["lens_patent", "epo_ops"],
+    "chemistry": ["uspto", "lens_patent", "epo_ops", "soopat"],
+    "environment": ["lens_patent", "epo_ops", "soopat"],
 }
 
 
@@ -254,14 +254,14 @@ def _select_sources(
                 sources.append(zh_src)
 
     # 始终尝试加入专利和临床试验来源
-    for extra in ["lens_patent", "epo_ops", "clinical_trials"]:
+    for extra in ["lens_patent", "epo_ops", "soopat", "clinical_trials"]:
         if extra not in sources and extra not in disabled:
             sources.append(extra)
 
     # 兼容旧字段：enable_patents/enable_clinical_trials 明确为 False 时排除
     if search_config:
         if search_config.get("enable_patents") is False and "disabled_sources" not in search_config:
-            sources = [s for s in sources if s not in ("lens_patent", "epo_ops", "uspto")]
+            sources = [s for s in sources if s not in ("lens_patent", "epo_ops", "soopat", "uspto")]
         if search_config.get("enable_clinical_trials") is False and "disabled_sources" not in search_config:
             sources = [s for s in sources if s != "clinical_trials"]
 

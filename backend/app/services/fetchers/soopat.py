@@ -40,7 +40,7 @@ class SooPatFetcher(AbstractFetcher):
     """SooPat 中国专利（CN） — 自动登录 + BeautifulSoup HTML 解析"""
 
     source_id = "soopat"
-    DEFAULT_TIMEOUT = 20.0
+    DEFAULT_TIMEOUT = 45.0  # 登录需要3次HTTP请求，总耗时比其他数据源长
 
     def __init__(self):
         self._email = os.getenv("SOOPAT_EMAIL", "")
@@ -159,22 +159,23 @@ class SooPatFetcher(AbstractFetcher):
             # 获取 cookies（优先账号密码自动登录）
             if has_credentials:
                 if self._cached_cookies is None:
+                    # 首次：直接用同一个 client 登录，cookies 自动落到 client 里
                     self._cached_cookies = await self._login(client)
-                if self._cached_cookies:
-                    client.cookies.update(self._cached_cookies)
-                elif has_manual:
-                    logger.warning("[SooPat] 自动登录失败，降级使用手动 cookies")
-                    manual = self._manual_cookies()
-                    if manual:
-                        client.cookies.update(manual)
+                    if self._cached_cookies is None:
+                        if has_manual:
+                            logger.warning("[SooPat] 自动登录失败，降级使用手动 cookies")
+                            _apply_cookies(client, self._manual_cookies())
+                        else:
+                            return []
+                    # 登录成功：cookies 已在 client，无需再 update
                 else:
-                    return []
+                    # 后续 fetch() 调用：client 是新实例，需要注入缓存的 cookies
+                    _apply_cookies(client, self._cached_cookies)
             else:
                 manual = self._manual_cookies()
-                if manual:
-                    client.cookies.update(manual)
-                else:
+                if not manual:
                     return []
+                _apply_cookies(client, manual)
 
             for page in range(pages_needed):
                 if len(papers) >= max_results:
@@ -204,14 +205,17 @@ class SooPatFetcher(AbstractFetcher):
                         },
                     )
 
+                    logger.info("[SooPat] 第%d页 URL=%s status=%d html_len=%d",
+                                page + 1, str(r.url)[:120], r.status_code, len(r.text))
+
                     # 检测 session 过期（follow_redirects=True 后落在登录页）
                     if "Account/Login" in str(r.url):
                         logger.info("[SooPat] session 已过期，尝试重新登录")
                         self._cached_cookies = None
                         if has_credentials:
+                            # 重新登录：同一 client，cookies 自动注入
                             self._cached_cookies = await self._login(client)
                             if self._cached_cookies:
-                                client.cookies.update(self._cached_cookies)
                                 r = await client.get(SOOPAT_SEARCH_URL, params=params,
                                                      headers={"User-Agent": _UA})
                             else:
@@ -229,8 +233,11 @@ class SooPatFetcher(AbstractFetcher):
                         logger.warning("[SooPat] 触发验证码，停止检索")
                         break
 
+                    patent_block_count = r.text.count('PatentBlock')
+                    logger.info("[SooPat] 第%d页 PatentBlock数量=%d", page + 1, patent_block_count)
+
                     batch = self._parse_results(r.text)
-                    logger.debug("[SooPat] 第%d页解析到 %d 条", page + 1, len(batch))
+                    logger.info("[SooPat] 第%d页解析到 %d 条", page + 1, len(batch))
                     if not batch:
                         break
                     papers.extend(batch)
@@ -267,9 +274,9 @@ class SooPatFetcher(AbstractFetcher):
         papers: List[Dict] = []
 
         result_divs = (
-            soup.find_all("div", style=lambda s: s and "min-height: 180px" in s)
+            soup.find_all("div", class_="PatentBlock")
+            or soup.find_all("div", style=lambda s: s and "min-height" in s and "max-width: 1080px" in s)
             or soup.select("div.result-item")
-            or soup.select("li.patent-item")
         )
 
         if not result_divs:
@@ -342,6 +349,14 @@ class SooPatFetcher(AbstractFetcher):
                 continue
 
         return papers
+
+
+def _apply_cookies(client: httpx.AsyncClient, cookies: Optional[httpx.Cookies]) -> None:
+    """将 httpx.Cookies 注入 client，逐个 set 避免 CookieConflict"""
+    if not cookies:
+        return
+    for cookie in cookies.jar:
+        client.cookies.set(cookie.name, cookie.value, domain=cookie.domain or "www.soopat.com")
 
 
 def _extract_label(div, labels: list) -> str:

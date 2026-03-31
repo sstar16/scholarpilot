@@ -76,10 +76,12 @@ class EPOFetcher(AbstractFetcher):
                 parts = [f'(ti="{w}" OR ab="{w}")' for w in words[:3]]
                 cql = " OR ".join(parts)
 
+            # EPO CQL 日期范围语法：pd within "YYYYMMDD YYYYMMDD"
             if year_from and year_to:
-                cql = f"({cql}) AND pd>={year_from}0101 AND pd<={year_to}1231"
+                cql = f'({cql}) AND pd within "{year_from}0101 {year_to}1231"'
             elif year_from:
-                cql = f"({cql}) AND pd>={year_from}0101"
+                import datetime
+                cql = f'({cql}) AND pd within "{year_from}0101 {datetime.date.today().year}1231"'
 
             count = min(max_results, 50)
             params = {
@@ -109,11 +111,18 @@ class EPOFetcher(AbstractFetcher):
                     .get("ops:biblio-search", {})
                     .get("ops:search-result", {})
             )
-            # exchange-documents 可能是 dict（单个）或不存在
-            exc_docs_wrapper = search_result.get("exchange-documents", {})
-            documents = exc_docs_wrapper.get("exchange-document", [])
-            if isinstance(documents, dict):
-                documents = [documents]
+            # exchange-documents 是一个列表，每个元素形如 {"exchange-document": {...}}
+            exc_docs_raw = search_result.get("exchange-documents", [])
+            if isinstance(exc_docs_raw, dict):
+                exc_docs_raw = [exc_docs_raw]
+            # 展开成 exchange-document 对象列表
+            documents = []
+            for wrapper in exc_docs_raw:
+                doc = wrapper.get("exchange-document", {})
+                if isinstance(doc, list):
+                    documents.extend(doc)
+                elif doc:
+                    documents.append(doc)
         except Exception as e:
             logger.error("[EPO] 响应结构解析失败: %s", e)
             return []

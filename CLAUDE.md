@@ -80,24 +80,29 @@ Celery Beat 每天早6点:
 
 ### 数据源扩展点
 
-所有数据源继承 `AbstractFetcher`（`fetchers/base.py`），实现 `fetch()` 方法后加入 `international.py` 的 `ALL_FETCHERS` 字典即可自动被 `search_engine.py` 调用。当前共 13 个数据源（含新增的 DBLP + 百度学术）。
+所有数据源继承 `AbstractFetcher`（`fetchers/base.py`），实现 `fetch()` 方法后加入 `international.py` 的 `ALL_FETCHERS` 字典即可自动被 `search_engine.py` 调用。当前共 15 个注册数据源。
 
-**国内 Docker/WSL2 环境网络限制（已验证）：**
+**国内 Docker/WSL2 环境网络限制（2026-03-31 docker exec 实测）：**
 
 | 数据源 | 状态 | 说明 |
 |--------|------|------|
 | OpenAlex | ✅ 可访问 | 主力来源（0篇时查 worker 日志看翻译结果） |
 | EuropePMC | ✅ 可访问 | PubMed 的欧洲镜像，内容相同且有完整摘要 |
 | Crossref | ✅ 可访问 | 期刊引用数据，稳定 |
-| **DBLP** | ✅ 可访问 | CS 顶会论文（CVPR/NeurIPS/ACL 等），免费 JSON API，**新增** |
-| **百度学术** | ✅ 可访问 | 中文论文，HTML 解析，仅中文描述+chinese_first scope 触发，**新增** |
-| SemanticScholar | ⚠️ 限速 | 公开 API 频繁 429，默认禁用 |
-| PubMed (NCBI) | ❌ 封锁 | `eutils.ncbi.nlm.nih.gov` TLS 握手超时，用 EuropePMC 替代 |
-| arXiv | ❌ 封锁 | `export.arxiv.org` 超时，默认禁用 |
-| Lens.org 专利 | ⚠️ 需 token | `LENS_API_TOKEN` 未配置时返回空，lens.org 免费申请 |
-| **EPO OPS** | ⚠️ 需 key | 欧洲专利局官方 API，EP/WO，需 `EPO_CONSUMER_KEY` + `EPO_CONSUMER_SECRET`（ops.epo.org 免费注册） |
+| DBLP | ✅ 可访问 | CS 顶会论文（CVPR/NeurIPS/ACL 等），免费 JSON API |
+| arXiv | ✅ 可访问 | 预印本，实测可达（之前误标为封锁） |
+| bioRxiv | ✅ 可访问 | 生物/医学预印本 |
+| medRxiv | ✅ 可访问 | 医学预印本 |
+| openalex_zh | ✅ 可访问 | OpenAlex language:zh 过滤，中文描述+chinese_first scope 触发 |
+| SemanticScholar | ❌ 禁用 | 免费 API 频繁 429，已加入 DISABLED_SOURCES |
+| PubMed (NCBI) | ❌ 封锁 | TLS ConnectError（GFW封锁），已加入 DISABLED_SOURCES |
+| ClinicalTrials.gov | ❌ 封锁 | TLS ConnectError（clinicaltrials.gov 被封），已加入 DISABLED_SOURCES |
+| USPTO (PatentsView) | ❌ API停用 | HTTP 410 discontinued；新 API 需 `PATENTSVIEW_API_KEY`（patentsview.org/api/signup 免费申请），已加入 DISABLED_SOURCES |
+| Lens.org 专利 | ⚠️ token 已过期 | 需到 lens.org/lens/user/subscriptions 重新申请 Trial token |
+| EPO OPS | ✅ 可访问 | 欧洲专利局，EP/WO，`EPO_CONSUMER_KEY` + `EPO_CONSUMER_SECRET` 已配置 |
+| SooPat | ⚠️ 需账号 | 中国专利 CN，需 `SOOPAT_EMAIL` + `SOOPAT_PASSWORD` |
 
-通过 `.env` 的 `DISABLED_SOURCES=pubmed,arxiv,biorxiv,medrxiv,semantic_scholar` 控制禁用列表，无需改代码。`query_builder._select_sources()` 读取此变量过滤。
+通过 `.env` 的 `DISABLED_SOURCES` 控制禁用列表，无需改代码。`query_builder._select_sources()` 读取此变量过滤。当前配置：`DISABLED_SOURCES=pubmed,clinical_trials,semantic_scholar,uspto`
 
 **中文查询流程**：`_get_english_query()` 用 LLM 将中文描述翻译为英文关键词供国际数据源使用；`original_chinese_query` 字段保留原始中文核心词，中文数据源（百度学术）使用此字段而非翻译词。
 

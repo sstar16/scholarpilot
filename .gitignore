@@ -43,3 +43,10 @@ docker-compose.override.yml
 
 # Playwright MCP 临时目录
 .playwright-mcp/
+
+# Node modules
+**/node_modules/
+
+# 本地工具配置
+.mcp.json
+.serena/

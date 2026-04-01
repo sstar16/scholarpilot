@@ -61,6 +61,14 @@ export const feedbackApi = {
     api.post(`/api/projects/${projectId}/rounds/${roundId}/feedback`, { feedbacks }),
 }
 
+export const sseApi = {
+  getRoundStreamUrl: (roundId: string) => {
+    const token = localStorage.getItem('urip_token')
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+    return `${baseUrl}/api/stream/rounds/${roundId}?token=${token}`
+  }
+}
+
 export const llmApi = {
   listProviders: () => api.get('/api/llm/providers'),
   configureProvider: (data: any) => api.post('/api/llm/configure', data),

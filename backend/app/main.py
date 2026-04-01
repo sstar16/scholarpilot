@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.api import auth, projects, search, feedback, llm, skills, ai_assist
+from app.api import auth, projects, search, feedback, llm, skills, ai_assist, stream
 from app.services.fetchers.base import FetcherRegistry
 
 
@@ -66,6 +66,7 @@ app.include_router(feedback.router)
 app.include_router(llm.router)
 app.include_router(skills.router)
 app.include_router(ai_assist.router)
+app.include_router(stream.router)
 
 
 @app.get("/")

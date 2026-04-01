@@ -12,6 +12,8 @@ export const useSearchStore = defineStore('search', () => {
   const feedbackDrafts = reactive<Record<string, number>>({})
   const loading = ref(false)
   const pollingTimer = ref<ReturnType<typeof setInterval> | null>(null)
+  const sseConnected = ref(false)
+  const streamingDocs = ref<any[]>([]) // docs arriving one-by-one via SSE
 
   const isStarting = computed(() => loading.value)
 
@@ -111,6 +113,37 @@ export const useSearchStore = defineStore('search', () => {
     return res.data
   }
 
+  function handleSSEEvent(event: string, data: any) {
+    switch (event) {
+      case 'round_status':
+        if (currentRound.value) {
+          currentRound.value = { ...currentRound.value, status: data.status, progress: data.progress, progress_message: data.message }
+        }
+        break
+      case 'doc_arrived':
+        streamingDocs.value.push(data)
+        break
+      case 'summary_ready': {
+        // Update the matching doc with summary
+        const doc = documents.value.find(d => d.external_id === data.external_id && d.source === data.source)
+        if (doc) {
+          doc.ai_summary = data.summary_preview
+          doc.ai_key_points = data.key_points
+        }
+        break
+      }
+      case 'round_complete':
+        if (currentRound.value) {
+          currentRound.value = { ...currentRound.value, status: 'awaiting_feedback', progress: 1.0 }
+        }
+        // Load full results to get complete data
+        if (currentRound.value?.id) {
+          loadRoundResults(currentRound.value.id)
+        }
+        break
+    }
+  }
+
   function reset() {
     stopPolling()
     projectId.value = ''
@@ -118,12 +151,15 @@ export const useSearchStore = defineStore('search', () => {
     rounds.value = []
     documents.value = []
     sourceStats.value = {}
+    streamingDocs.value = []
+    sseConnected.value = false
     Object.keys(feedbackDrafts).forEach(k => delete feedbackDrafts[k])
   }
 
   return {
     currentRound, rounds, documents, sourceStats, feedbackDrafts, loading,
     isStarting, ratedCount,
+    sseConnected, streamingDocs, handleSSEEvent,
     fetchRounds, startRound, loadRoundResults, setFeedback, submitFeedback, reset,
   }
 })

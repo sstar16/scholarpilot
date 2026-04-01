@@ -5,8 +5,10 @@ EPO OPS (Open Patent Services) Fetcher
 申请免费账号：https://ops.epo.org → 注册 → 创建应用 → 获取 Consumer Key + Secret
 免费配额：4 GB/周
 """
+import asyncio
 import logging
 import os
+import re
 from typing import Dict, List, Optional
 
 import httpx
@@ -17,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 EPO_TOKEN_URL = "https://ops.epo.org/3.2/auth/accesstoken"
 EPO_SEARCH_URL = "https://ops.epo.org/3.2/rest-services/published-data/search/full-cycle"
+EPO_ABSTRACT_URL = "https://ops.epo.org/3.2/rest-services/published-data/publication/epodoc/{doc_id}/abstract"
+MAX_CONCURRENT_ABSTRACT_FETCH = 5
 
 
 class EPOFetcher(AbstractFetcher):
@@ -92,7 +96,14 @@ class EPOFetcher(AbstractFetcher):
             try:
                 r = await client.get(EPO_SEARCH_URL, params=params, headers=headers)
                 if r.status_code == 200:
-                    return self._parse_biblio(r.json(), count)
+                    papers = self._parse_biblio(r.json(), count)
+                    # 对缺少摘要的专利，批量从 EPO abstract endpoint 获取
+                    missing = [p for p in papers if not p.get("abstract")]
+                    if missing:
+                        await self._fetch_abstracts_batch(missing, client, headers)
+                        enriched = sum(1 for p in missing if p.get("abstract"))
+                        logger.info("[EPO] 摘要补全: %d/%d 篇成功", enriched, len(missing))
+                    return papers
                 elif r.status_code == 404:
                     logger.debug("[EPO] 查询无结果: %s", cql[:80])
                     return []
@@ -204,6 +215,35 @@ class EPOFetcher(AbstractFetcher):
         return papers
 
 
+    async def _fetch_abstracts_batch(
+        self, papers: List[Dict], client: httpx.AsyncClient, headers: dict
+    ):
+        """批量从 EPO abstract endpoint 获取缺失的摘要（并发控制）"""
+        sem = asyncio.Semaphore(MAX_CONCURRENT_ABSTRACT_FETCH)
+
+        async def fetch_one(paper: Dict):
+            async with sem:
+                doc_id = paper.get("external_id", "")
+                if not doc_id:
+                    return
+                try:
+                    url = EPO_ABSTRACT_URL.format(doc_id=doc_id)
+                    # EPO abstract endpoint 返回 XML，用 Accept: application/json 可能不被支持
+                    # 改用 XML 并手动解析
+                    abs_headers = {**headers, "Accept": "application/xml"}
+                    r = await client.get(url, headers=abs_headers, timeout=10.0)
+                    if r.status_code == 200:
+                        abstract = _parse_abstract_xml(r.text)
+                        if abstract:
+                            paper["abstract"] = abstract
+                    elif r.status_code != 404:
+                        logger.debug("[EPO] abstract fetch %s: HTTP %d", doc_id, r.status_code)
+                except Exception as e:
+                    logger.debug("[EPO] abstract fetch %s failed: %s", doc_id, e)
+
+        await asyncio.gather(*[fetch_one(p) for p in papers], return_exceptions=True)
+
+
 # ---------- 辅助函数 ----------
 
 def _txt(field) -> str:
@@ -237,6 +277,32 @@ def _extract_text(p) -> Optional[str]:
         parts = [_extract_text(item) for item in p if item]
         return " ".join(x for x in parts if x) or None
     return None
+
+
+def _parse_abstract_xml(xml_text: str) -> Optional[str]:
+    """从 EPO abstract XML 响应中提取摘要文本（优先英文）"""
+    if not xml_text:
+        return None
+    try:
+        # 提取所有 <abstract> 块
+        abstracts = re.findall(r'<abstract[^>]*>(.*?)</abstract>', xml_text, re.DOTALL)
+        if not abstracts:
+            return None
+
+        # 优先英文
+        for block in abstracts:
+            if 'lang="en"' in xml_text[:xml_text.index(block)] or 'lang="EN"' in xml_text[:xml_text.index(block)]:
+                text = re.sub(r'<[^>]+>', ' ', block).strip()
+                text = re.sub(r'\s+', ' ', text)
+                if len(text) > 20:
+                    return text
+
+        # 没找到英文标记，取第一个
+        text = re.sub(r'<[^>]+>', ' ', abstracts[0]).strip()
+        text = re.sub(r'\s+', ' ', text)
+        return text if len(text) > 20 else None
+    except Exception:
+        return None
 
 
 def _extract_party(raw) -> str:

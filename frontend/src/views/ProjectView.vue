@@ -73,13 +73,50 @@
               </el-tag>
             </div>
 
-            <!-- Searching/summarizing state -->
-            <div v-if="isProcessing" class="processing-state">
-              <el-progress type="circle" :percentage="Math.round((currentRound?.progress ?? 0) * 100)" />
-              <div class="processing-text">
-                <p>{{ processingMessage }}</p>
-                <p class="processing-hint">通常需要 1-3 分钟，请稍候…</p>
+            <!-- Searching/summarizing state — real-time SSE powered -->
+            <div v-if="isProcessing" class="processing-state-v2">
+              <div class="processing-header">
+                <el-progress
+                  :percentage="Math.round((currentRound?.progress ?? 0) * 100)"
+                  :stroke-width="8"
+                  :text-inside="true"
+                  style="flex:1"
+                />
+                <span class="processing-status">{{ currentRound?.progress_message || processingMessage }}</span>
               </div>
+
+              <!-- Agent plan (appears when agent planning is active) -->
+              <AgentPlanView ref="agentPlanRef" />
+
+              <!-- Per-source progress (appears when sources start responding) -->
+              <SourceProgressBar ref="sourceProgressRef" />
+
+              <!-- Streaming document arrivals -->
+              <div v-if="searchStore.streamingDocs.length > 0" class="streaming-docs">
+                <div class="streaming-header">
+                  <span>已到达 {{ searchStore.streamingDocs.length }} 篇文献</span>
+                  <span class="streaming-hint">摘要生成中...</span>
+                </div>
+                <TransitionGroup name="doc-list" tag="div" class="streaming-list">
+                  <div
+                    v-for="doc in searchStore.streamingDocs.slice(-8)"
+                    :key="doc.external_id + doc.source"
+                    class="streaming-doc-item"
+                  >
+                    <span class="streaming-dot" :class="doc.has_abstract ? 'dot-has' : 'dot-no'"></span>
+                    <el-tag size="small" effect="plain" style="flex-shrink:0">{{ doc.source }}</el-tag>
+                    <span class="streaming-doc-title">{{ doc.title }}</span>
+                  </div>
+                </TransitionGroup>
+              </div>
+
+              <!-- Skeleton placeholders when waiting for first docs -->
+              <div v-else-if="currentRound?.status === 'searching'" class="skeleton-placeholders">
+                <DocumentSkeleton />
+                <DocumentSkeleton />
+              </div>
+
+              <p class="processing-hint">实时推送中，无需刷新页面</p>
             </div>
 
             <!-- Results + feedback -->
@@ -423,7 +460,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed, ref, reactive } from 'vue'
+import { onMounted, computed, ref, reactive, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useProjectStore } from '../stores/project'
@@ -431,6 +468,10 @@ import { useSearchStore } from '../stores/search'
 import { projectApi } from '../api/client'
 import RoundTimeline from '../components/RoundTimeline.vue'
 import DocumentCard from '../components/DocumentCard.vue'
+import DocumentSkeleton from '../components/document/DocumentSkeleton.vue'
+import SourceProgressBar from '../components/search/SourceProgressBar.vue'
+import AgentPlanView from '../components/pipeline/AgentPlanView.vue'
+import { useSSE } from '../composables/useSSE'
 
 const route = useRoute()
 const router = useRouter()
@@ -441,6 +482,28 @@ const devViewOpen = ref(false)
 const llmAllOpen = ref(false)
 const expandedSources = reactive<Set<string>>(new Set())
 const expandedLlmDocs = reactive<Set<string>>(new Set())
+
+// SSE real-time streaming
+const sse = useSSE()
+const sourceProgressRef = ref<InstanceType<typeof SourceProgressBar> | null>(null)
+const agentPlanRef = ref<InstanceType<typeof AgentPlanView> | null>(null)
+
+function setupSSE(roundId: string) {
+  sse.on('round_status', (data: any) => searchStore.handleSSEEvent('round_status', data))
+  sse.on('doc_arrived', (data: any) => searchStore.handleSSEEvent('doc_arrived', data))
+  sse.on('summary_ready', (data: any) => searchStore.handleSSEEvent('summary_ready', data))
+  sse.on('round_complete', (data: any) => {
+    searchStore.handleSSEEvent('round_complete', data)
+    sse.disconnect()
+  })
+  sse.on('agent_plan', (data: any) => agentPlanRef.value?.setPlan(data))
+  sse.on('source_started', (data: any) => sourceProgressRef.value?.onSourceStarted(data))
+  sse.on('source_complete', (data: any) => sourceProgressRef.value?.onSourceComplete(data))
+  sse.on('source_error', (data: any) => sourceProgressRef.value?.onSourceError(data))
+  sse.connect(roundId)
+}
+
+onUnmounted(() => sse.disconnect())
 
 function toggleSource(srcId: string) {
   expandedSources.has(srcId) ? expandedSources.delete(srcId) : expandedSources.add(srcId)
@@ -607,8 +670,12 @@ function statusType(s: string) {
 
 async function startRound() {
   try {
-    await searchStore.startRound(route.params.id as string)
+    const round = await searchStore.startRound(route.params.id as string)
     await projectStore.fetchProject(route.params.id as string)
+    // Connect SSE for real-time streaming
+    if (round?.id) {
+      setupSSE(round.id)
+    }
   } catch (e: any) {
     ElMessage.error(e.response?.data?.detail || '启动检索失败')
   }
@@ -634,6 +701,10 @@ onMounted(async () => {
   // Load current round results if applicable
   if (searchStore.currentRound && searchStore.currentRound.round_number) {
     await searchStore.loadRoundResults(searchStore.currentRound.id)
+  }
+  // Auto-connect SSE for active rounds (page refresh scenario)
+  if (searchStore.currentRound && ['searching', 'summarizing', 'running', 'pending'].includes(searchStore.currentRound.status)) {
+    setupSSE(searchStore.currentRound.id)
   }
 })
 </script>
@@ -668,13 +739,60 @@ onMounted(async () => {
 .round-header h3 { margin: 0; font-size: 18px; }
 .round-desc { color: #909399; font-size: 13px; margin: 4px 0 0; }
 
+/* Old processing state (kept for fallback) */
 .processing-state {
   display: flex; gap: 32px; align-items: center;
   background: #fff; border-radius: 8px; padding: 40px;
   justify-content: center;
 }
 .processing-text p { margin: 0; font-size: 15px; font-weight: 500; }
-.processing-hint { color: #909399; font-size: 13px; margin-top: 6px !important; }
+.processing-hint { color: #909399; font-size: 13px; margin-top: 8px; text-align: center; }
+
+/* New SSE-powered processing state */
+.processing-state-v2 {
+  background: #fff; border-radius: 10px; padding: 24px;
+  border: 1px solid #e4e7ed; margin-bottom: 16px;
+}
+.processing-header {
+  display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+}
+.processing-status {
+  font-size: 13px; color: #606266; white-space: nowrap; flex-shrink: 0;
+}
+
+/* Streaming doc list */
+.streaming-docs {
+  background: #f5f7fa; border-radius: 8px; padding: 12px 16px;
+  margin-top: 12px;
+}
+.streaming-header {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 14px; font-weight: 600; color: #303133; margin-bottom: 8px;
+}
+.streaming-hint { font-size: 12px; color: #909399; font-weight: 400; }
+.streaming-list { display: flex; flex-direction: column; gap: 6px; }
+.streaming-doc-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; background: #fff; border-radius: 6px;
+  border: 1px solid #ebeef5; font-size: 13px;
+  animation: slideIn 0.3s ease-out;
+}
+.streaming-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.dot-has { background: #67c23a; }
+.dot-no { background: #e6a23c; }
+.streaming-doc-title {
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #606266;
+}
+.skeleton-placeholders { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+
+/* TransitionGroup animations */
+.doc-list-enter-active { animation: slideIn 0.4s ease-out; }
+.doc-list-leave-active { animation: slideIn 0.3s ease-in reverse; }
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
 
 .feedback-progress {
   display: flex; justify-content: space-between; align-items: center;

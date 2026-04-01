@@ -60,6 +60,10 @@ async def _execute_round_async(round_id_str: str):
             # 2. 标记为检索中
             await mark_round_searching(round_id, db)
 
+            # [SSE] 通知前端：检索开始
+            from app.services.event_bus import EventBus
+            EventBus.publish_sync(round_id_str, "round_status", {"status": "searching", "progress": 0.1, "message": "检索中..."})
+
             # [Harness] ROUND_START hook
             try:
                 from app.harness.hook_engine import HookEngine, HookPoint
@@ -187,6 +191,14 @@ async def _execute_round_async(round_id_str: str):
                 )
                 logger.info("[Harness] Agent plan applied: %s", agent_plan.rationale[:100])
 
+            # [SSE] 通知前端：Agent 规划结果
+            if agent_plan is not None:
+                EventBus.publish_sync(round_id_str, "agent_plan", {
+                    "rationale": agent_plan.rationale[:200],
+                    "tools": agent_plan.selected_tools,
+                    "year_range": f"{agent_plan.year_from}-{agent_plan.year_to}",
+                })
+
             # 4b. 将 QueryPlan 核心信息存入 search_queries（供 Dev View 使用）
             from sqlalchemy import update as sql_update
             query_plan_info = {
@@ -251,6 +263,9 @@ async def _execute_round_async(round_id_str: str):
                     llm_manager=llm_manager,
                 )
 
+            # [SSE] 通知前端：检索完成
+            EventBus.publish_sync(round_id_str, "round_status", {"status": "saving", "progress": 0.5, "message": f"检索完成，{len(selected_docs)}篇文献"})
+
             # 6. 若无文档则直接进入等待反馈（也保存 source_stats）
             if not selected_docs:
                 from sqlalchemy import update as sql_update
@@ -269,6 +284,17 @@ async def _execute_round_async(round_id_str: str):
 
             # 8. 标记为摘要生成中（含数据源统计）
             await mark_round_summarizing(round_id, total_candidates, len(selected_docs), db, source_stats=source_stats)
+
+            # [SSE] 通知前端：摘要生成开始 + 逐篇文献到达
+            EventBus.publish_sync(round_id_str, "round_status", {"status": "summarizing", "progress": 0.6, "message": "正在生成AI摘要..."})
+            for doc in selected_docs:
+                EventBus.publish_sync(round_id_str, "doc_arrived", {
+                    "external_id": str(doc.get("external_id", "")),
+                    "source": doc.get("source"),
+                    "title": doc.get("title", ""),
+                    "doc_type": doc.get("doc_type", "paper"),
+                    "has_abstract": bool(doc.get("abstract")),
+                })
 
             # 8. 使用 Celery chord：所有摘要子任务完成后触发 finalize 回调
             summary_tasks = []
@@ -412,6 +438,16 @@ async def _generate_summary_async(round_id_str: str, source: str, external_id: s
                     )
                 )
                 await db.commit()
+
+                # [SSE] 通知前端：单篇摘要完成
+                from app.services.event_bus import EventBus
+                EventBus.publish_sync(round_id_str, "summary_ready", {
+                    "external_id": external_id,
+                    "source": source,
+                    "summary_preview": summary[:200] if summary else None,
+                    "key_points": key_points[:3] if key_points else [],
+                })
+
                 return {"status": "ok", "source": source, "external_id": external_id}
             else:
                 return {"status": "no_summary", "source": source, "external_id": external_id}
@@ -472,6 +508,14 @@ async def _finalize_round_async(round_id_str: str):
                 )
             )
             await db.commit()
+
+            # [SSE] 通知前端：轮次完成
+            from app.services.event_bus import EventBus
+            EventBus.publish_sync(round_id_str, "round_complete", {
+                "total": total_count,
+                "summaries_done": done_count,
+            })
+
             return {"status": "ok", "done": done_count, "total": total_count}
     finally:
         await engine.dispose()

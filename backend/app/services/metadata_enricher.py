@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 OPENALEX_WORKS = "https://api.openalex.org/works"
 CROSSREF_WORKS = "https://api.crossref.org/works"
-MAX_ENRICH_PER_ROUND = 10
+MAX_ENRICH_PER_ROUND = 30
 ENRICH_TIMEOUT = 10.0
 
 
@@ -26,8 +26,13 @@ async def enrich_missing_abstracts(docs: List[Dict]) -> List[Dict]:
     if not missing:
         return docs
 
-    to_enrich = missing[:MAX_ENRICH_PER_ROUND]
-    logger.info("[Enricher] %d 篇缺少摘要，尝试补全 %d 篇", len(missing), len(to_enrich))
+    # 优先 EPO 专利（EPO bibliographic search 几乎不返回摘要）
+    epo_missing = [d for d in missing if d.get("source") == "epo_ops"]
+    other_missing = [d for d in missing if d.get("source") != "epo_ops"]
+    prioritized = epo_missing + other_missing
+    to_enrich = prioritized[:MAX_ENRICH_PER_ROUND]
+    logger.info("[Enricher] %d 篇缺少摘要（EPO %d篇），尝试补全 %d 篇",
+                len(missing), len(epo_missing), len(to_enrich))
 
     async with httpx.AsyncClient(timeout=ENRICH_TIMEOUT) as client:
         tasks = [_enrich_one(doc, client) for doc in to_enrich]

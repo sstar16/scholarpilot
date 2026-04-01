@@ -189,33 +189,97 @@
                       </div>
                       <div v-if="Object.keys(searchStore.sourceStats).length > 0" class="dev-src-table">
                         <div class="dev-src-thead">
+                          <span class="c-exp"></span>
                           <span class="c-src">数据源</span>
                           <span class="c-query">实际发出的查询词</span>
-                          <span class="c-count">结果</span>
+                          <span class="c-count">API返回</span>
                           <span class="c-time">耗时</span>
                         </div>
                         <div
                           v-for="(stat, srcId) in sortedSourceStats"
                           :key="srcId"
-                          class="dev-src-row"
+                          class="dev-src-block"
                           :class="{ 'row-ok': stat.status === 'ok' && stat.count > 0, 'row-zero': stat.status === 'ok' && stat.count === 0, 'row-err': stat.status === 'error' }"
                         >
-                          <span class="c-src">
-                            <span class="src-dot" :class="stat.status === 'ok' && stat.count > 0 ? 'dot-ok' : stat.status === 'error' ? 'dot-err' : 'dot-zero'"></span>
-                            {{ srcId }}
-                          </span>
-                          <span class="c-query">
-                            <code v-if="stat.query_sent && stat.status !== 'error'" class="dev-code-sm">{{ stat.query_sent }}</code>
-                            <span v-if="stat.error" class="dev-err-txt">{{ stat.error.slice(0, 80) }}</span>
-                          </span>
-                          <span class="c-count" :class="stat.count > 0 ? 'cnt-ok' : 'cnt-zero'">{{ stat.count ?? 0 }} 篇</span>
-                          <span class="c-time">{{ stat.execution_ms != null ? stat.execution_ms + 'ms' : '—' }}</span>
+                          <!-- 主行：可点击展开 -->
+                          <div
+                            class="dev-src-row"
+                            :style="docsBySource[srcId]?.length ? 'cursor:pointer' : ''"
+                            @click="docsBySource[srcId]?.length ? toggleSource(String(srcId)) : null"
+                          >
+                            <span class="c-exp">
+                              <el-icon v-if="docsBySource[srcId]?.length" class="expand-icon" :class="{ 'icon-open': expandedSources.has(String(srcId)) }"><ArrowRight /></el-icon>
+                            </span>
+                            <span class="c-src">
+                              <span class="src-dot" :class="stat.status === 'ok' && stat.count > 0 ? 'dot-ok' : stat.status === 'error' ? 'dot-err' : 'dot-zero'"></span>
+                              {{ srcId }}
+                            </span>
+                            <span class="c-query">
+                              <code v-if="stat.query_sent && stat.status !== 'error'" class="dev-code-sm">{{ stat.query_sent }}</code>
+                              <span v-if="stat.error" class="dev-err-txt">{{ stat.error.slice(0, 80) }}</span>
+                            </span>
+                            <span class="c-count" :class="stat.count > 0 ? 'cnt-ok' : 'cnt-zero'">{{ stat.count ?? 0 }} 篇</span>
+                            <span class="c-time">{{ stat.execution_ms != null ? stat.execution_ms + 'ms' : '—' }}</span>
+                          </div>
+                          <!-- 展开区：该源的筛选文献 -->
+                          <div v-if="expandedSources.has(String(srcId)) && docsBySource[srcId]?.length" class="dev-src-docs">
+                            <div v-for="doc in docsBySource[srcId]" :key="doc.id" class="dev-src-doc-row">
+                              <span class="doc-rank">#{{ doc.rank_in_round ?? '—' }}</span>
+                              <span class="doc-score">{{ doc.initial_score?.toFixed(3) ?? '—' }}</span>
+                              <span class="doc-title-sm">{{ doc.title }}</span>
+                              <span class="doc-date-sm">{{ doc.publication_date?.slice(0, 7) ?? '' }}</span>
+                            </div>
+                            <div v-if="docsBySource[srcId].length < (stat.count ?? 0)" class="dev-src-note">
+                              仅显示进入最终结果的 {{ docsBySource[srcId].length }} 篇（API原始返回 {{ stat.count }} 篇）
+                            </div>
+                          </div>
                         </div>
                       </div>
                       <div v-else class="dev-no-data">暂无数据</div>
                     </div>
                   </div>
-                  <div class="dev-connector"><span>↓ 去重 · 补全 · 评分</span></div>
+                  <div class="dev-connector"><span>↓ 去重 · 补全 · 评分 · 筛选</span></div>
+
+                  <!-- STEP 3.5: LLM 摘要生成 -->
+                  <div class="dev-step">
+                    <div class="dev-step-num dev-step-llm">AI</div>
+                    <div class="dev-step-body">
+                      <div class="dev-step-title">
+                        LLM 摘要生成
+                        <span class="dev-step-sub">{{ searchStore.documents.filter(d => d.ai_summary).length }} / {{ searchStore.documents.length }} 篇成功</span>
+                        <span class="dev-toggle-btn" @click="llmAllOpen = !llmAllOpen">{{ llmAllOpen ? '全部收起' : '全部展开' }}</span>
+                      </div>
+                      <div v-if="searchStore.documents.length > 0" class="dev-llm-list">
+                        <div v-for="doc in searchStore.documents" :key="doc.id" class="dev-llm-item">
+                          <!-- 标题行（可点击） -->
+                          <div class="dev-llm-title-row" @click="toggleLlmDoc(String(doc.id))">
+                            <el-icon class="expand-icon" :class="{ 'icon-open': llmAllOpen || expandedLlmDocs.has(String(doc.id)) }"><ArrowRight /></el-icon>
+                            <el-tag size="small" effect="dark" style="flex-shrink:0;font-size:10px">{{ doc.source }}</el-tag>
+                            <span class="dev-llm-doc-title">{{ doc.title }}</span>
+                            <span class="dev-llm-badge" :class="doc.ai_summary ? 'badge-ok' : 'badge-none'">{{ doc.ai_summary ? '✓ AI摘要' : '无摘要' }}</span>
+                          </div>
+                          <!-- 展开区：原文 → LLM输出 -->
+                          <div v-if="llmAllOpen || expandedLlmDocs.has(String(doc.id))" class="dev-llm-detail">
+                            <div class="dev-llm-col">
+                              <div class="dev-llm-col-label">原文摘要 <span class="col-label-sub">（API返回）</span></div>
+                              <div class="dev-llm-text dev-llm-raw">{{ doc.abstract?.slice(0, 300) ?? '（无摘要）' }}{{ (doc.abstract?.length ?? 0) > 300 ? '…' : '' }}</div>
+                            </div>
+                            <div class="dev-llm-arrow">→</div>
+                            <div class="dev-llm-col">
+                              <div class="dev-llm-col-label">AI 中文摘要 <span class="col-label-sub">（LLM输出）</span></div>
+                              <div class="dev-llm-text dev-llm-ai">{{ doc.ai_summary?.slice(0, 300) ?? '（未生成）' }}{{ (doc.ai_summary?.length ?? 0) > 300 ? '…' : '' }}</div>
+                              <div v-if="doc.ai_key_points?.length" class="dev-llm-points">
+                                <span v-for="pt in doc.ai_key_points.slice(0, 3)" :key="pt" class="dev-llm-point">{{ pt }}</span>
+                              </div>
+                              <div v-if="doc.ai_relevance_reason" class="dev-llm-reason">相关理由：{{ doc.ai_relevance_reason }}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-else class="dev-no-data">暂无文献数据</div>
+                    </div>
+                  </div>
+                  <div class="dev-connector"><span>↓</span></div>
 
                   <!-- STEP 4: 后处理 & 最终结果 -->
                   <div class="dev-step">
@@ -315,6 +379,16 @@ const projectStore = useProjectStore()
 const searchStore = useSearchStore()
 const submitting = ref(false)
 const devViewOpen = ref(false)
+const llmAllOpen = ref(false)
+const expandedSources = reactive<Set<string>>(new Set())
+const expandedLlmDocs = reactive<Set<string>>(new Set())
+
+function toggleSource(srcId: string) {
+  expandedSources.has(srcId) ? expandedSources.delete(srcId) : expandedSources.add(srcId)
+}
+function toggleLlmDoc(docId: string) {
+  expandedLlmDocs.has(docId) ? expandedLlmDocs.delete(docId) : expandedLlmDocs.add(docId)
+}
 const ALL_SOURCES = [
   { id: 'openalex',         label: 'OpenAlex',            desc: '国际综合文献库' },
   { id: 'europe_pmc',       label: 'Europe PMC',          desc: '生物医学全文' },
@@ -392,6 +466,15 @@ async function saveSettings() {
 
 const project = computed(() => projectStore.current)
 const currentRound = computed(() => searchStore.currentRound)
+
+const docsBySource = computed(() => {
+  const result: Record<string, any[]> = {}
+  for (const doc of searchStore.documents) {
+    if (!result[doc.source]) result[doc.source] = []
+    result[doc.source].push(doc)
+  }
+  return result
+})
 
 const sortedSourceStats = computed(() => {
   const entries = Object.entries(searchStore.sourceStats) as [string, any][]
@@ -632,44 +715,127 @@ onMounted(async () => {
 }
 
 /* Source table */
-.dev-src-table { width: 100%; border-collapse: collapse; }
+.dev-src-table { width: 100%; }
 .dev-src-thead, .dev-src-row {
   display: grid;
-  grid-template-columns: 130px 1fr 60px 70px;
+  grid-template-columns: 20px 120px 1fr 58px 68px;
   align-items: center;
-  gap: 0;
 }
 .dev-src-thead {
   font-size: 11px; color: #8b949e; font-weight: 600;
   padding: 4px 8px 6px; border-bottom: 1px solid #21262d;
   text-transform: uppercase; letter-spacing: 0.05em;
 }
+.dev-src-block { border-bottom: 1px solid #21262d; }
+.dev-src-block:last-child { border-bottom: none; }
+.row-zero { opacity: 0.6; }
+.row-err .dev-src-row { background: #160808; }
 .dev-src-row {
   padding: 7px 8px;
-  border-bottom: 1px solid #21262d;
-  transition: background 0.15s;
+  transition: background 0.12s;
 }
-.dev-src-row:last-child { border-bottom: none; }
 .dev-src-row:hover { background: #1c2128; }
-.row-ok { }
-.row-zero { opacity: 0.65; }
-.row-err { background: #1c0a0a; }
 
+.c-exp { display: flex; align-items: center; justify-content: center; color: #8b949e; }
 .c-src { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: #c9d1d9; }
-.c-query { font-size: 12px; color: #8b949e; padding-right: 8px; }
+.c-query { font-size: 12px; color: #8b949e; padding-right: 8px; overflow: hidden; }
 .c-count { font-size: 12px; text-align: right; padding-right: 8px; }
 .c-time { font-size: 11px; color: #8b949e; text-align: right; }
 .cnt-ok { color: #3fb950; font-weight: 600; }
 .cnt-zero { color: #8b949e; }
 
-.src-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-}
+.src-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .dot-ok { background: #3fb950; }
 .dot-zero { background: #484f58; }
 .dot-err { background: #f85149; }
-
 .dev-err-txt { font-size: 11px; color: #f85149; word-break: break-all; }
+
+/* Expand icon */
+.expand-icon { font-size: 11px; transition: transform 0.2s; }
+.icon-open { transform: rotate(90deg); }
+
+/* Expanded source doc list */
+.dev-src-docs {
+  padding: 6px 8px 10px 28px;
+  border-top: 1px solid #21262d;
+  background: #0d1117;
+}
+.dev-src-doc-row {
+  display: grid;
+  grid-template-columns: 28px 52px 1fr 58px;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid #161b22;
+  font-size: 12px;
+}
+.dev-src-doc-row:last-of-type { border-bottom: none; }
+.doc-rank { color: #484f58; font-size: 11px; text-align: right; }
+.doc-score { color: #8957e5; font-family: monospace; font-size: 11px; }
+.doc-title-sm { color: #c9d1d9; line-height: 1.4; }
+.doc-date-sm { color: #484f58; font-size: 11px; text-align: right; white-space: nowrap; }
+.dev-src-note { font-size: 11px; color: #484f58; padding: 6px 0 2px; font-style: italic; }
+
+/* LLM Step */
+.dev-step-llm { background: #6e40c9 !important; font-size: 10px !important; }
+.dev-toggle-btn {
+  margin-left: auto; font-size: 11px; color: #58a6ff;
+  cursor: pointer; padding: 2px 8px;
+  border: 1px solid #1f6feb; border-radius: 10px;
+  background: transparent;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.dev-toggle-btn:hover { background: #1f3a5f; }
+
+.dev-llm-list { display: flex; flex-direction: column; gap: 6px; }
+.dev-llm-item {
+  background: #0d1117; border: 1px solid #21262d;
+  border-radius: 6px; overflow: hidden;
+}
+.dev-llm-title-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; cursor: pointer;
+  transition: background 0.12s;
+}
+.dev-llm-title-row:hover { background: #161b22; }
+.dev-llm-doc-title {
+  flex: 1; font-size: 12px; color: #c9d1d9;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dev-llm-badge { font-size: 10px; white-space: nowrap; }
+.badge-ok { color: #3fb950; }
+.badge-none { color: #484f58; }
+
+.dev-llm-detail {
+  display: grid; grid-template-columns: 1fr 24px 1fr;
+  gap: 0; border-top: 1px solid #21262d;
+}
+.dev-llm-col { padding: 10px 12px; }
+.dev-llm-arrow {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: #8b949e;
+  background: #0a0d12; border-left: 1px solid #21262d; border-right: 1px solid #21262d;
+}
+.dev-llm-col-label {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #8b949e; margin-bottom: 6px;
+}
+.col-label-sub { font-weight: 400; text-transform: none; letter-spacing: 0; color: #484f58; }
+.dev-llm-text { font-size: 12px; line-height: 1.6; }
+.dev-llm-raw { color: #8b949e; font-style: italic; }
+.dev-llm-ai { color: #79c0ff; }
+.dev-llm-points {
+  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;
+}
+.dev-llm-point {
+  font-size: 11px; background: #1f3a5f; color: #79c0ff;
+  padding: 2px 7px; border-radius: 10px;
+}
+.dev-llm-reason {
+  font-size: 11px; color: #8b949e; margin-top: 6px;
+  font-style: italic; border-top: 1px solid #21262d; padding-top: 6px;
+}
 
 /* Funnel */
 .dev-funnel {

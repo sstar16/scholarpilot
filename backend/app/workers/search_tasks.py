@@ -215,13 +215,21 @@ async def _execute_round_async(round_id_str: str):
             )
             await db.commit()
 
-            # 5. 执行并行检索（传入跨轮去重集合和评分权重）
-            selected_docs, total_candidates, source_stats = await execute_search(
+            # 5. 执行检索 — Agent Search Loop（自适应多轮迭代）或单次执行
+            from app.harness.search_loop import AgentSearchLoop
+            search_loop = AgentSearchLoop()
+            loop_result = await search_loop.run(
                 query_plan,
                 exclude_doc_keys=exclude_keys if exclude_keys else None,
                 scoring_weights=scoring_weights,
                 profile_embedding=profile_embedding,
+                llm_manager=llm_manager if settings.enable_agent_planning else None,
             )
+            selected_docs = loop_result.all_docs
+            total_candidates = loop_result.total_candidates
+            source_stats = loop_result.source_stats
+            if len(loop_result.iterations) > 1:
+                logger.info("[Harness] Search Loop: %s", loop_result.loop_rationale)
 
             # [Harness] POST_SEARCH hook
             try:

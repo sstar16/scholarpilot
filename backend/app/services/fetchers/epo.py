@@ -16,7 +16,7 @@ from app.services.fetchers.base import AbstractFetcher
 logger = logging.getLogger(__name__)
 
 EPO_TOKEN_URL = "https://ops.epo.org/3.2/auth/accesstoken"
-EPO_SEARCH_URL = "https://ops.epo.org/3.2/rest-services/published-data/search/biblio"
+EPO_SEARCH_URL = "https://ops.epo.org/3.2/rest-services/published-data/search/full-cycle"
 
 
 class EPOFetcher(AbstractFetcher):

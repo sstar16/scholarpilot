@@ -137,8 +137,8 @@ async def submit_feedback(
             "feedback_count": len(feedback_dicts),
             "project_id": str(project_id),
         })
-    except Exception:
-        pass
+    except Exception as _he:
+        logger.warning("[Harness] hook error: %s", _he)
 
     # 更新用户画像
     if feedback_dicts:
@@ -155,8 +155,8 @@ async def submit_feedback(
             "feedback_count": saved,
             "project_id": str(project_id),
         })
-    except Exception:
-        pass
+    except Exception as _he:
+        logger.warning("[Harness] hook error: %s", _he)
 
     # 标记本轮完成
     await mark_round_complete(round_id, db)

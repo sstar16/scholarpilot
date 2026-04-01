@@ -70,8 +70,8 @@ async def _execute_round_async(round_id_str: str):
                     "project_id": str(project.id),
                     "project_description": project.description[:200],
                 })
-            except Exception:
-                pass
+            except Exception as _he:
+                logger.warning("[Harness] ROUND_START hook error: %s", _he)
 
             # 3. 构建跨轮去重集合（排除已出现 + 用户标不相关的文档）
             from app.models.document import Document
@@ -216,15 +216,6 @@ async def _execute_round_async(round_id_str: str):
             await db.commit()
 
             # 5. 执行并行检索（传入跨轮去重集合和评分权重）
-            # [Harness] 初始化 tool registry（worker 进程可能未经 lifespan 初始化）
-            try:
-                from app.harness.tool_registry import ToolRegistry
-                if ToolRegistry.get_instance().tool_count == 0:
-                    from app.harness.tool_registry import init_tool_registry
-                    init_tool_registry()
-            except Exception:
-                pass
-
             selected_docs, total_candidates, source_stats = await execute_search(
                 query_plan,
                 exclude_doc_keys=exclude_keys if exclude_keys else None,
@@ -240,8 +231,8 @@ async def _execute_round_async(round_id_str: str):
                     "selected_count": len(selected_docs),
                     "source_stats": source_stats,
                 })
-            except Exception:
-                pass
+            except Exception as _he:
+                logger.warning("[Harness] POST_SEARCH hook error: %s", _he)
 
             # 5b. LLM Reranking（可选，通过 search_config.enable_llm_rerank 开关）
             if selected_docs and project.search_config and project.search_config.get("enable_llm_rerank"):
@@ -291,8 +282,8 @@ async def _execute_round_async(round_id_str: str):
                     "round_id": round_id_str,
                     "doc_count": len(selected_docs),
                 })
-            except Exception:
-                pass
+            except Exception as _he:
+                logger.warning("[Harness] PRE_SUMMARIZE hook error: %s", _he)
 
             # [Harness] Multi-Agent Coordinator — run Quality + Profile agents in parallel with summaries
             try:

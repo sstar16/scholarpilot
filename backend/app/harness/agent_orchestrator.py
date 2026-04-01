@@ -111,15 +111,40 @@ class SearchStrategyAgent:
             logger.warning("[AgentOrchestrator] JSON parse error: %s", e)
             return None
 
+    # Core tools that should always be included for broad coverage
+    CORE_TOOLS = ["openalex", "europe_pmc", "crossref", "arxiv"]
+
     def _validate_plan(
         self, plan: AgentSearchPlan, available_tools: Dict[str, float]
     ) -> AgentSearchPlan:
-        """Remove tools that don't exist in the registry."""
+        """Validate and ensure minimum tool coverage."""
+        from app.harness.agent_plan import ToolInvocation
+
         valid_tools = [t for t in plan.tools if t.tool_id in available_tools]
         if not valid_tools:
-            # If all agent-selected tools are invalid, keep original
             return plan
+
+        # Ensure core tools are always included
+        existing_ids = {t.tool_id for t in valid_tools}
+        for core_id in self.CORE_TOOLS:
+            if core_id not in existing_ids and core_id in available_tools:
+                valid_tools.append(ToolInvocation(
+                    tool_id=core_id, max_results=20, priority=1
+                ))
+
+        # Minimum 5 tools — pad with high-reliability available tools
+        if len(valid_tools) < 5:
+            sorted_available = sorted(
+                available_tools.items(), key=lambda x: -x[1]
+            )
+            for tid, rel in sorted_available:
+                if tid not in {t.tool_id for t in valid_tools} and rel >= 0.5:
+                    valid_tools.append(ToolInvocation(tool_id=tid, max_results=20, priority=2))
+                if len(valid_tools) >= 6:
+                    break
+
         plan.tools = valid_tools
+        logger.info("[AgentOrchestrator] Validated: %d tools (ensured core coverage)", len(valid_tools))
         return plan
 
     def _build_cache_key(

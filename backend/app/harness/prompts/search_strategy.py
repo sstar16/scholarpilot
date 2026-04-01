@@ -14,11 +14,13 @@ CONTEXT:
 - Previous round stats: {prev_stats}
 
 RULES:
-1. Select 3-8 tools from the available list (prefer reliability > 0.7)
-2. For round 1-2: narrower time range (5-10 years), fewer results per source
-3. For round 3+: wider time range, more results, use profile keywords as boost terms
-4. Exclude tools with reliability < 0.3
+1. ALWAYS select at least 6 tools. Must include: openalex, europe_pmc, crossref, arxiv. Add more based on topic.
+2. For round 1-2: 5-10 year range, 20 results per source
+3. For round 3+: wider time range (20+ years or all), 30+ results, use profile keywords as boost terms
+4. Only exclude tools with reliability < 0.2
 5. Chinese-language tools (openalex_zh, soopat) should be included when topic contains Chinese
+6. Patent tools (epo_ops, lens_patent) should be included for applied/industrial topics
+7. More tools = better coverage. When in doubt, include more sources.
 
 OUTPUT (JSON only, no explanation):
 {{

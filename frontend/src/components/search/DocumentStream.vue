@@ -9,7 +9,7 @@
       <div class="stream-list" ref="listRef">
         <TransitionGroup name="stream-item">
           <div
-            v-for="(doc, idx) in visibleDocs"
+            v-for="(doc, idx) in docs"
             :key="doc.external_id + '-' + doc.source"
             class="stream-card"
             :style="{ transitionDelay: `${Math.min(idx * 50, 300)}ms` }"
@@ -38,27 +38,44 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, nextTick, watch } from 'vue'
+import { ref, nextTick, watch, onUnmounted } from 'vue'
 
 const props = defineProps<{
   docs: any[]
 }>()
 
 const listRef = ref<HTMLElement | null>(null)
+const userScrolling = ref(false)
+let lastScrollWasProgrammatic = false
 
-const MAX_VISIBLE = 12
+function onScroll() {
+  if (!listRef.value) return
+  // Skip if this scroll was triggered by our auto-scroll code
+  if (lastScrollWasProgrammatic) {
+    lastScrollWasProgrammatic = false
+    return
+  }
+  const el = listRef.value
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30
+  // User scrolled up → pause auto-scroll; user scrolled back to bottom → resume
+  userScrolling.value = !atBottom
+}
 
-const visibleDocs = computed(() => {
-  // Show most recent docs, newest at bottom
-  const all = props.docs
-  if (all.length <= MAX_VISIBLE) return all
-  return all.slice(all.length - MAX_VISIBLE)
+// Attach scroll listener when listRef becomes available (it's inside v-if)
+watch(listRef, (el, oldEl) => {
+  oldEl?.removeEventListener('scroll', onScroll)
+  el?.addEventListener('scroll', onScroll, { passive: true })
 })
 
-// Auto-scroll to bottom when new docs arrive
+onUnmounted(() => {
+  listRef.value?.removeEventListener('scroll', onScroll)
+})
+
+// Auto-scroll to bottom when new docs arrive (only if user hasn't scrolled up)
 watch(() => props.docs.length, async () => {
   await nextTick()
-  if (listRef.value) {
+  if (listRef.value && !userScrolling.value) {
+    lastScrollWasProgrammatic = true
     listRef.value.scrollTop = listRef.value.scrollHeight
   }
 })
@@ -148,8 +165,6 @@ function truncAuthors(authors: string | string[]): string {
 
 .stream-container {
   position: relative;
-  max-height: 520px;
-  overflow: hidden;
 }
 
 .stream-fade-top {
@@ -167,15 +182,18 @@ function truncAuthors(authors: string | string[]): string {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 520px;
+  max-height: 480px;
   overflow-y: auto;
   padding-top: 40px;
+  padding-bottom: 8px;
   scroll-behavior: smooth;
-  /* Hide scrollbar */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  /* Thin subtle scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #dcdfe6 transparent;
 }
-.stream-list::-webkit-scrollbar { display: none; }
+.stream-list::-webkit-scrollbar { width: 4px; }
+.stream-list::-webkit-scrollbar-thumb { background: #dcdfe6; border-radius: 2px; }
+.stream-list::-webkit-scrollbar-track { background: transparent; }
 
 .stream-card {
   display: flex;

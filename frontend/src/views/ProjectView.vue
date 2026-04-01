@@ -694,7 +694,23 @@ onMounted(async () => {
   }
   // Auto-connect SSE for active rounds (page refresh scenario)
   if (searchStore.currentRound && ['searching', 'summarizing', 'running', 'pending'].includes(searchStore.currentRound.status)) {
+    // Load existing docs into streamingDocs so the UI isn't empty after refresh
+    try {
+      await searchStore.loadRoundResults(searchStore.currentRound.id)
+      if (searchStore.documents.length > 0 && searchStore.streamingDocs.length === 0) {
+        searchStore.streamingDocs = searchStore.documents.map((d: any) => ({
+          external_id: d.external_id,
+          source: d.source,
+          title: d.title,
+          year: d.year,
+          authors: d.authors,
+          has_summary: !!d.ai_summary,
+          has_abstract: !!d.abstract,
+        }))
+      }
+    } catch { /* round may not have results yet */ }
     setupSSE(searchStore.currentRound.id)
+    searchStore.startPolling(id, searchStore.currentRound.id)
   }
 })
 </script>

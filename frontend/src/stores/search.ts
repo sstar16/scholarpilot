@@ -188,6 +188,6 @@ export const useSearchStore = defineStore('search', () => {
     currentRound, rounds, documents, sourceStats, feedbackDrafts, loading,
     isStarting, ratedCount,
     sseConnected, streamingDocs, statusText, handleSSEEvent,
-    fetchRounds, startRound, loadRoundResults, setFeedback, submitFeedback, reset,
+    fetchRounds, startRound, startPolling, loadRoundResults, setFeedback, submitFeedback, reset,
   }
 })

@@ -207,6 +207,9 @@ onUnmounted(() => {
 .particle-canvas {
   width: 120px;
   height: 120px;
+  /* Radial fade — particles dissolve at edges, no hard boundary */
+  -webkit-mask-image: radial-gradient(circle, black 40%, transparent 70%);
+  mask-image: radial-gradient(circle, black 40%, transparent 70%);
 }
 
 .status-text {

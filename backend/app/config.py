@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     # Lens.org 专利 API（免费，https://www.lens.org/lens/user/subscriptions 申请）
     lens_api_token: str = ""
 
+    # Harness Engineering
+    enable_agent_planning: bool = True        # AI-driven search strategy (default ON)
+    enable_autonomous_rounds: bool = True     # Agent decides when to stop (not fixed 5 rounds)
+    enable_auto_skills: bool = True           # Agent auto-triggers skills (e.g. deep dive on high-score docs)
+    agent_planning_provider: str = "deepseek" # Preferred LLM for agent planning (cheap)
+    max_llm_cost_per_round: float = 0.10      # Hard budget ceiling per round (USD)
+    max_autonomous_rounds: int = 15           # Safety cap for autonomous mode
+
     # 应用
     debug: bool = False
     app_name: str = "URIP - 科研情报平台"

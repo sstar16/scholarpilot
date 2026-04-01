@@ -60,6 +60,19 @@ async def _execute_round_async(round_id_str: str):
             # 2. 标记为检索中
             await mark_round_searching(round_id, db)
 
+            # [Harness] ROUND_START hook
+            try:
+                from app.harness.hook_engine import HookEngine, HookPoint
+                _hooks = HookEngine.get_instance()
+                await _hooks.fire(HookPoint.ROUND_START, {
+                    "round_id": round_id_str,
+                    "round_number": round_.round_number,
+                    "project_id": str(project.id),
+                    "project_description": project.description[:200],
+                })
+            except Exception:
+                pass
+
             # 3. 构建跨轮去重集合（排除已出现 + 用户标不相关的文档）
             from app.models.document import Document
             from app.models.round_document import RoundDocument
@@ -108,6 +121,45 @@ async def _execute_round_async(round_id_str: str):
             # 用 getattr 避免 pgvector 未安装时 AttributeError
             profile_embedding = getattr(profile, "positive_embedding", None) if round_.round_number > 1 else None
 
+            # [Harness] Agent-driven search strategy (feature-flagged)
+            agent_plan = None
+            if settings.enable_agent_planning:
+                try:
+                    from app.harness.agent_orchestrator import SearchStrategyAgent
+                    from app.harness.tool_registry import ToolRegistry
+                    agent = SearchStrategyAgent(redis_url=settings.redis_url)
+                    registry = ToolRegistry.get_instance()
+
+                    # Get previous round source_stats for context
+                    prev_stats = {}
+                    if round_.round_number > 1:
+                        from sqlalchemy import select as sa_select
+                        prev_round_q = await db.execute(
+                            sa_select(SearchRound).where(
+                                SearchRound.project_id == project.id,
+                                SearchRound.round_number == round_.round_number - 1,
+                            )
+                        )
+                        prev_round = prev_round_q.scalar_one_or_none()
+                        if prev_round and prev_round.source_stats:
+                            prev_stats = prev_round.source_stats
+
+                    from app.services.query_builder import get_max_rounds as _get_max_rounds
+                    agent_plan = await agent.plan_round(
+                        project_description=project.description,
+                        round_number=round_.round_number,
+                        max_rounds=project.max_rounds or _get_max_rounds(project.search_config),
+                        profile_positive=preferred_keywords or [],
+                        profile_negative=excluded_keywords or [],
+                        tool_reliability=registry.get_reliability_report(),
+                        prev_source_stats=prev_stats,
+                        llm_manager=llm_manager,
+                    )
+                except Exception as e:
+                    logger.warning("[Harness] Agent planning failed, using deterministic: %s", e)
+                    agent_plan = None
+
+            # Build query plan (deterministic path, always runs for base_query/translation)
             query_plan = await build_query(
                 project_description=project.description,
                 project_domain=project.domain,
@@ -118,6 +170,22 @@ async def _execute_round_async(round_id_str: str):
                 search_config=project.search_config,
                 project_domains=project.domains,
             )
+
+            # [Harness] If agent produced a plan, overlay it onto the deterministic QueryPlan
+            if agent_plan is not None:
+                query_plan = agent_plan.to_query_plan(
+                    base_query=query_plan.base_query,
+                    original_chinese_query=query_plan.original_chinese_query,
+                    english_query_source=query_plan.english_query_source,
+                    cn_query_source=query_plan.cn_query_source,
+                    expanded_terms=query_plan.expanded_terms,
+                    anchor_keywords=query_plan.anchor_keywords,
+                    profile_injected_en=query_plan.profile_injected_en,
+                    profile_injected_zh=query_plan.profile_injected_zh,
+                    profile_query_extension=query_plan.profile_query_extension,
+                    language_scope=query_plan.language_scope,
+                )
+                logger.info("[Harness] Agent plan applied: %s", agent_plan.rationale[:100])
 
             # 4b. 将 QueryPlan 核心信息存入 search_queries（供 Dev View 使用）
             from sqlalchemy import update as sql_update
@@ -148,12 +216,32 @@ async def _execute_round_async(round_id_str: str):
             await db.commit()
 
             # 5. 执行并行检索（传入跨轮去重集合和评分权重）
+            # [Harness] 初始化 tool registry（worker 进程可能未经 lifespan 初始化）
+            try:
+                from app.harness.tool_registry import ToolRegistry
+                if ToolRegistry.get_instance().tool_count == 0:
+                    from app.harness.tool_registry import init_tool_registry
+                    init_tool_registry()
+            except Exception:
+                pass
+
             selected_docs, total_candidates, source_stats = await execute_search(
                 query_plan,
                 exclude_doc_keys=exclude_keys if exclude_keys else None,
                 scoring_weights=scoring_weights,
                 profile_embedding=profile_embedding,
             )
+
+            # [Harness] POST_SEARCH hook
+            try:
+                await _hooks.fire(HookPoint.POST_SEARCH, {
+                    "round_id": round_id_str,
+                    "total_candidates": total_candidates,
+                    "selected_count": len(selected_docs),
+                    "source_stats": source_stats,
+                })
+            except Exception:
+                pass
 
             # 5b. LLM Reranking（可选，通过 search_config.enable_llm_rerank 开关）
             if selected_docs and project.search_config and project.search_config.get("enable_llm_rerank"):
@@ -196,6 +284,54 @@ async def _execute_round_async(round_id_str: str):
                         project_description=project.description,
                     )
                 )
+
+            # [Harness] PRE_SUMMARIZE hook
+            try:
+                await _hooks.fire(HookPoint.PRE_SUMMARIZE, {
+                    "round_id": round_id_str,
+                    "doc_count": len(selected_docs),
+                })
+            except Exception:
+                pass
+
+            # [Harness] Multi-Agent Coordinator — run Quality + Profile agents in parallel with summaries
+            try:
+                from app.harness.coordinator import QualityAgent, ProfilePreAnalyzer, AutoSkillTrigger
+
+                quality_agent = QualityAgent()
+                profile_agent = ProfilePreAnalyzer()
+                auto_skills = AutoSkillTrigger()
+
+                # Run coordinator agents in parallel (non-blocking, results stored in round metadata)
+                coord_results = await asyncio.gather(
+                    quality_agent.evaluate(selected_docs, query_plan_info, project.description, llm_manager),
+                    profile_agent.pre_analyze(selected_docs, project.description, llm_manager),
+                    auto_skills.evaluate_triggers(selected_docs, round_.round_number, str(project.id)),
+                    return_exceptions=True,
+                )
+
+                # Store coordinator results in round metadata
+                coord_meta = {}
+                for i, result in enumerate(coord_results):
+                    if isinstance(result, dict):
+                        label = ["quality", "profile_pre", "auto_skills"][i]
+                        coord_meta[label] = result
+
+                if coord_meta:
+                    from sqlalchemy import update as sql_update2
+                    await db.execute(
+                        sql_update2(SearchRound).where(SearchRound.id == round_id).values(
+                            progress_message=f"搜索完成，{len(selected_docs)}篇文献，正在生成摘要... "
+                                             f"[Quality: {coord_meta.get('quality', {}).get('metrics', {}).get('abstract_rate', '?')}% 有摘要]"
+                        )
+                    )
+                    await db.commit()
+                    logger.info("[Harness] Coordinator results: quality=%s, pre_profile=%d keywords, auto_skills=%d",
+                                coord_meta.get("quality", {}).get("metrics", {}).get("abstract_rate", "?"),
+                                len(coord_meta.get("profile_pre", {}).get("novel_keywords", [])),
+                                len(coord_meta.get("auto_skills", [])))
+            except Exception as e:
+                logger.warning("[Harness] Coordinator failed (non-fatal): %s", e)
 
             callback = finalize_round_after_summaries.si(round_id_str=round_id_str)
             chord(group(summary_tasks))(callback)

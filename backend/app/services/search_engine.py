@@ -50,6 +50,14 @@ async def execute_search(
             year_to=year_to,
         )
         elapsed_ms = int((time.time() - t0) * 1000)
+        # Record stats in tool registry (no-op if registry not initialized)
+        try:
+            from app.harness.tool_registry import ToolRegistry
+            registry = ToolRegistry.get_instance()
+            _, docs = result
+            registry.record_result(src_id, success=len(docs) > 0 or True, latency_ms=elapsed_ms)
+        except Exception:
+            pass
         return result, elapsed_ms
 
     for source_id in query_plan.sources:

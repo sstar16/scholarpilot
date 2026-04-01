@@ -219,11 +219,54 @@ cloudflared tunnel --url http://localhost
 - **可观测性**：`SearchRound.source_stats` JSON 列记录各数据源返回统计，前端展示数据源贡献
 - **日志统一**：所有 fetcher 和 worker 使用 `logging.getLogger(__name__)` 替代 `print`
 
+### Harness Engineering（2026-04-01，ai-powers 分支）
+
+受 Claude Code 源码 12 层 harness 机制启发，ScholarPilot 接入了 6 个适配机制，将系统从"硬编码管线"升级为"AI agent 驱动的可扩展平台"。
+
+**新增包：`backend/app/harness/`**
+
+| 组件 | 文件 | 说明 |
+|------|------|------|
+| Tool Registry | `harness/tool_registry.py` | 统一 15 个 fetcher 为注册工具，带运行时统计（延迟、可靠性） |
+| Hook Engine | `harness/hook_engine.py` | 11 个生命周期 hook 点（ROUND_START / POST_SEARCH / PRE_FEEDBACK 等） |
+| Agent Orchestrator | `harness/agent_orchestrator.py` | LLM 动态规划搜索策略（feature flag: `ENABLE_AGENT_PLANNING`） |
+| Skill System | `harness/skill_registry.py` + `skills/` | 3 个可复用工作流（Deep Dive / Trend Spotter / Gap Finder） |
+
+**Feature Flags（`.env`，默认全部 ON）：**
+- `ENABLE_AGENT_PLANNING=true` — AI 动态规划搜索策略（DeepSeek）
+- `ENABLE_AUTONOMOUS_ROUNDS=true` — Agent 决定何时停止搜索（突破固定5轮）
+- `ENABLE_AUTO_SKILLS=true` — Agent 自动触发技能（如高引文献自动 Deep Dive）
+- `MAX_AUTONOMOUS_ROUNDS=15` — 自主模式安全上限
+- `MAX_LLM_COST_PER_ROUND=0.10`（每轮 LLM 成本上限）
+
+**多 Agent 并行架构：**
+- **Search Strategy Agent** — 动态规划搜索策略（每轮启动前）
+- **Quality Agent** — 评估搜索结果质量（与摘要生成并行）
+- **Profile Pre-Analyzer** — 预分析结果中的新关键词/主题簇（与摘要并行）
+- **Auto Skill Trigger** — 检测高引文献自动建议 Deep Dive（与摘要并行）
+- **Round Controller** — 每轮反馈后决定继续/停止搜索（替代固定5轮）
+
+**新增 API：**
+- `GET /api/skills` — 列出可用技能
+- `POST /api/skills/{project_id}/{skill_id}/run` — 执行技能
+- `GET /health` 新增 `harness` 字段（tool_registry 统计 + metrics）
+
+**`.claude/` 目录结构：**
+```
+.claude/
+  agents/search_strategist.md  — Agent prompt 文档
+  skills/deep_dive.md 等       — Skill 文档
+  hooks/README.md              — Hook 使用指南
+  rules/cost_budget.md         — LLM 成本规则
+  rules/source_policy.md       — 数据源策略
+```
+
 ## Phase 规划
 
 | Phase | 关键功能 | 状态 |
 |-------|---------|------|
 | 1 MVP | 5轮渐进检索、AI摘要、用户画像、Docker部署 | ✅ **dev0 发布**（2026-03-29）|
+| 1.5 AI Powers | Harness Engineering（Tool Registry / Hook / Agent / Skills） | ✅ **ai-powers 分支**（2026-04-01）|
 | 2 | 万方/百度学术、PDF全文、pgvector embedding、邮件通知 | 待开发 |
 | 3 | EPO/WIPO专利、多语言检索、文献关系图、协作功能 | 规划中 |
 

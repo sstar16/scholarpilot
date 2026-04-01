@@ -143,10 +143,28 @@
                           <div v-if="currentRound.search_queries.original_chinese_query" class="dev-kv">
                             <span class="dev-k">中文核心词</span>
                             <code class="dev-code">{{ currentRound.search_queries.original_chinese_query }}</code>
+                            <el-tag
+                              size="small"
+                              :type="currentRound.search_queries.cn_query_source === 'llm' ? 'success' : 'info'"
+                              effect="plain"
+                              class="dev-source-tag"
+                            >{{ currentRound.search_queries.cn_query_source === 'llm' ? 'LLM' : currentRound.search_queries.cn_query_source === 'none' ? '未触发' : '正则' }}</el-tag>
                           </div>
                           <div class="dev-kv">
                             <span class="dev-k">英文查询词</span>
                             <code class="dev-code dev-code-primary">{{ currentRound.search_queries.base_query }}</code>
+                            <el-tag
+                              size="small"
+                              :type="currentRound.search_queries.english_query_source === 'llm' ? 'success' : currentRound.search_queries.english_query_source === 'llm+regex' ? 'warning' : 'info'"
+                              effect="plain"
+                              class="dev-source-tag"
+                            >{{ currentRound.search_queries.english_query_source === 'llm' ? 'LLM' : currentRound.search_queries.english_query_source === 'llm+regex' ? 'LLM+正则' : currentRound.search_queries.english_query_source === 'regex' ? '正则' : '旧数据' }}</el-tag>
+                          </div>
+                          <div v-if="currentRound.search_queries.anchor_keywords?.length" class="dev-kv">
+                            <span class="dev-k" style="color:#6e7681">描述锚词</span>
+                            <span class="dev-v dev-tags">
+                              <el-tag v-for="t in currentRound.search_queries.anchor_keywords" :key="'anchor-'+t" size="small" effect="plain" style="opacity:0.6" class="dev-tag">{{ t }}</el-tag>
+                            </span>
                           </div>
                           <div class="dev-kv">
                             <span class="dev-k">扩展词汇</span>
@@ -172,12 +190,41 @@
                             <span class="dev-k">每源上限</span>
                             <span class="dev-v">{{ currentRound.search_queries.max_per_source }} 篇</span>
                           </div>
-                          <div v-if="currentRound.search_queries.profile_keywords?.length" class="dev-kv">
-                            <span class="dev-k">画像注入词</span>
-                            <span class="dev-v dev-tags">
-                              <el-tag v-for="t in currentRound.search_queries.profile_keywords" :key="t" size="small" type="warning" effect="plain" class="dev-tag">{{ t }}</el-tag>
-                            </span>
-                          </div>
+                          <!-- 新字段：中英文分行展示 -->
+                          <template v-if="currentRound.search_queries.profile_injected_en?.length || currentRound.search_queries.profile_injected_zh?.length">
+                            <div class="dev-kv">
+                              <span class="dev-k">画像注入</span>
+                              <span class="dev-v" style="display:flex;flex-direction:column;gap:5px">
+                                <span v-if="currentRound.search_queries.profile_injected_en?.length" class="dev-tags">
+                                  <el-tag size="small" type="info" effect="plain" style="font-size:10px;flex-shrink:0">排序扩展</el-tag>
+                                  <el-tag v-for="t in currentRound.search_queries.profile_injected_en" :key="'en-'+t" size="small" type="warning" effect="plain" class="dev-tag">{{ t }}</el-tag>
+                                </span>
+                                <span v-if="currentRound.search_queries.profile_injected_zh?.length" class="dev-tags">
+                                  <el-tag size="small" type="info" effect="plain" style="font-size:10px;flex-shrink:0">中文追加</el-tag>
+                                  <el-tag v-for="t in currentRound.search_queries.profile_injected_zh" :key="'zh-'+t" size="small" type="success" effect="plain" class="dev-tag">{{ t }}</el-tag>
+                                </span>
+                                <span v-if="currentRound.search_queries.profile_query_extension" class="dev-tags">
+                                  <el-tag size="small" type="warning" effect="dark" style="font-size:10px;flex-shrink:0">API召回扩展</el-tag>
+                                  <code class="dev-code" style="font-size:11px">{{ currentRound.search_queries.profile_query_extension }}</code>
+                                  <el-tag
+                                    size="small"
+                                    :type="currentRound.search_queries.profile_query_extension?.split(' ').every(w => currentRound.search_queries.anchor_keywords?.includes(w)) ? 'success' : 'info'"
+                                    effect="plain"
+                                    style="font-size:10px;flex-shrink:0"
+                                  >{{ currentRound.search_queries.profile_query_extension?.split(' ').every(w => currentRound.search_queries.anchor_keywords?.includes(w)) ? '描述已确认' : '画像降级' }}</el-tag>
+                                </span>
+                              </span>
+                            </div>
+                          </template>
+                          <!-- 旧数据降级显示 -->
+                          <template v-else-if="currentRound.search_queries.profile_keywords?.length">
+                            <div class="dev-kv">
+                              <span class="dev-k">画像注入词</span>
+                              <span class="dev-v dev-tags">
+                                <el-tag v-for="t in currentRound.search_queries.profile_keywords" :key="t" size="small" type="warning" effect="plain" class="dev-tag">{{ t }}</el-tag>
+                              </span>
+                            </div>
+                          </template>
                           <div v-if="currentRound.search_queries.profile_excluded?.length" class="dev-kv">
                             <span class="dev-k">画像排除词</span>
                             <span class="dev-v dev-tags">
@@ -712,6 +759,7 @@ onMounted(async () => {
 .dev-v { color: #c9d1d9; flex: 1; }
 .dev-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .dev-tag { font-family: monospace; }
+.dev-source-tag { flex-shrink: 0; margin-left: 4px; }
 
 /* Code */
 .dev-code {

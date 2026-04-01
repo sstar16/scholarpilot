@@ -131,8 +131,14 @@ async def _execute_round_async(round_id_str: str):
                 "sources_selected": query_plan.sources,
                 "max_per_source": query_plan.max_results_per_source,
                 "original_chinese_query": query_plan.original_chinese_query,
-                "profile_keywords": preferred_keywords[:5] if round_.round_number > 1 else [],
+                "profile_keywords": preferred_keywords[:10] if round_.round_number > 1 else [],
                 "profile_excluded": excluded_keywords[:3] if round_.round_number > 1 else [],
+                "english_query_source": query_plan.english_query_source,
+                "cn_query_source": query_plan.cn_query_source,
+                "profile_injected_en": query_plan.profile_injected_en,
+                "profile_injected_zh": query_plan.profile_injected_zh,
+                "profile_query_extension": query_plan.profile_query_extension,
+                "anchor_keywords": query_plan.anchor_keywords,
             }
             await db.execute(
                 sql_update(SearchRound).where(SearchRound.id == round_id).values(

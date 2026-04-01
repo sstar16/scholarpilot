@@ -56,12 +56,14 @@ async def execute_search(
         fetcher = ALL_FETCHERS.get(source_id)
         if not fetcher:
             continue
-        # 中文数据源优先使用原始中文查询词，英文数据源使用翻译后的查询词
-        query = (
-            query_plan.original_chinese_query or query_plan.base_query
-            if source_id in _CHINESE_SOURCES and query_plan.original_chinese_query
-            else query_plan.base_query
-        )
+        # 中文数据源用原始中文查询词（含中文画像词追加）；
+        # 英文数据源 round>=3 时追加 profile_query_extension 扩大召回
+        if source_id in _CHINESE_SOURCES and query_plan.original_chinese_query:
+            query = query_plan.original_chinese_query
+        elif query_plan.profile_query_extension:
+            query = f"{query_plan.base_query} {query_plan.profile_query_extension}"
+        else:
+            query = query_plan.base_query
         queries_per_source[source_id] = query
         tasks.append(
             _timed_fetch(

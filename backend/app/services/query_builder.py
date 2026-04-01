@@ -5,7 +5,7 @@
 """
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,12 @@ DEFAULT_ROUND_CONFIGS = {
 # 保留旧名称以兼容 progressive_search.py 的导入
 ROUND_CONFIGS = DEFAULT_ROUND_CONFIGS
 
+# 每轮注入的画像词数量（轮次越高画像越成熟，注入越多）
+_PROFILE_INJECT_COUNT = {2: 3, 3: 5, 4: 8}  # 5+ 默认 10
+
+# 中文字符检测
+_CN_PAT = re.compile(r'[\u4e00-\u9fff]')
+
 
 @dataclass
 class QueryPlan:
@@ -35,6 +41,12 @@ class QueryPlan:
     max_results_per_source: int
     language_scope: str  # chinese_first | international | global
     original_chinese_query: Optional[str] = None  # 中文数据源使用的原始中文查询词
+    english_query_source: str = "regex"   # "llm" | "regex" — 英文查询词生成路径
+    cn_query_source: str = "none"          # "llm" | "regex" | "none" — 中文查询词生成路径
+    profile_injected_en: List[str] = field(default_factory=list)  # 注入的英文画像词（排序用）
+    profile_injected_zh: List[str] = field(default_factory=list)  # 注入的中文画像词（追加到 cn query）
+    profile_query_extension: str = ""     # round>=3 时追加到英文 API 查询词的画像词
+    anchor_keywords: List[str] = field(default_factory=list)      # 来自项目描述的锚词（不衰减底色）
 
 
 def _get_round_config(round_number: int, search_config: Optional[Dict[str, Any]] = None) -> Dict:
@@ -97,19 +109,49 @@ async def build_query(
     from datetime import datetime
     config = _get_round_config(round_number, search_config)
 
-    # 提取/翻译核心关键词
-    base_query = await _get_english_query(project_description, llm_manager)
-
-    # 如果原始描述是中文，保留中文核心词供中文数据源使用
-    original_chinese_query = (
-        _extract_core_query(project_description)
-        if _is_mostly_chinese(project_description)
-        else None
-    )
+    # 提取/翻译核心关键词（中英文并行，避免串行 LLM 等待）
+    import asyncio as _asyncio
+    is_chinese = _is_mostly_chinese(project_description)
+    if is_chinese:
+        (base_query, english_query_source), (original_chinese_query, cn_query_source) = await _asyncio.gather(
+            _get_english_query(project_description, llm_manager),
+            _get_chinese_query(project_description, llm_manager),
+        )
+    else:
+        base_query, english_query_source = await _get_english_query(project_description, llm_manager)
+        original_chinese_query = None
+        cn_query_source = "none"
 
     base_terms = [t for t in base_query.split() if len(t) > 2]
-    extra = preferred_keywords[:5] if preferred_keywords and round_number > 1 else []
-    expanded_terms = base_terms + extra
+
+    # B：锚词 = 来自项目描述的 base_terms（每轮固定存在于 expanded_terms，不随画像漂移）
+    anchor_keywords = base_terms
+    anchor_en_set = set(anchor_keywords)
+
+    # 画像词按语言分流，注入量随轮次递进
+    _inject_count = _PROFILE_INJECT_COUNT.get(round_number, 10)
+    extra_en: List[str] = []   # 英文词 → expanded_terms（排序用）
+    extra_zh: List[str] = []   # 中文词 → 追加到 original_chinese_query（中文源用）
+    if preferred_keywords and round_number > 1:
+        for kw in preferred_keywords[:_inject_count]:
+            if _CN_PAT.search(kw):
+                extra_zh.append(kw)
+            else:
+                extra_en.append(kw)
+
+    expanded_terms = base_terms + extra_en
+
+    # 中文画像词追加到中文数据源查询词（仅当描述为中文时才有 original_chinese_query）
+    if extra_zh and original_chinese_query is not None:
+        original_chinese_query = original_chinese_query + " " + " ".join(extra_zh)
+
+    # C：round >= 3 时，优先用"反馈词 ∩ 锚词"做 API 扩展（确认了项目描述方向的词）
+    # 交集为空时降级用纯反馈词，保留召回能力
+    profile_query_extension = ""
+    if round_number >= 3 and extra_en:
+        confirmed = [kw for kw in extra_en if kw in anchor_en_set]
+        extension_src = confirmed if confirmed else extra_en
+        profile_query_extension = " ".join(extension_src[:2])
 
     exclude_terms = excluded_keywords[:3] if excluded_keywords else []
 
@@ -140,6 +182,12 @@ async def build_query(
         max_results_per_source=max_results_per_source,
         language_scope=scope,
         original_chinese_query=original_chinese_query,
+        english_query_source=english_query_source,
+        cn_query_source=cn_query_source,
+        profile_injected_en=extra_en,
+        profile_injected_zh=extra_zh,
+        profile_query_extension=profile_query_extension,
+        anchor_keywords=anchor_keywords,
     )
 
 
@@ -157,9 +205,10 @@ def _is_mostly_chinese(text: str) -> bool:
     return chinese_chars > len(text) * 0.3
 
 
-async def _get_english_query(description: str, llm_manager) -> str:
+async def _get_english_query(description: str, llm_manager) -> tuple[str, str]:
+    """返回 (英文查询词, source: 'llm'|'regex')"""
     if not _is_mostly_chinese(description) or llm_manager is None:
-        return _extract_core_query(description)
+        return _extract_core_query(description), "regex"
 
     prompt = (
         "You are an academic search query generator. "
@@ -180,22 +229,51 @@ async def _get_english_query(description: str, llm_manager) -> str:
                     all_words = []
                     for kw in keywords:
                         all_words.extend(str(kw).split())
-                    # 过滤掉过短的词
                     all_words = [w for w in all_words if len(w) >= 2]
                     if len(all_words) >= 3:
                         query = " ".join(all_words[:8])
                         logger.debug("[QueryBuilder] LLM翻译查询: %s", query[:100])
-                        return query
+                        return query, "llm"
                     else:
-                        # 翻译结果有效词太少，追加原始中文核心词
                         fallback = _extract_core_query(description)
                         combined = " ".join(all_words + fallback.split())
                         logger.warning("[QueryBuilder] LLM翻译词过少(%d)，补充中文核心词: %s", len(all_words), combined[:100])
-                        return combined
+                        return combined, "llm+regex"
     except Exception as e:
         logger.warning("[QueryBuilder] LLM翻译失败，回退到原始提取: %s", e)
 
-    return _extract_core_query(description)
+    return _extract_core_query(description), "regex"
+
+
+async def _get_chinese_query(description: str, llm_manager) -> tuple[str, str]:
+    """返回 (中文核心查询词, source: 'llm'|'regex')"""
+    if llm_manager is None:
+        return _extract_core_query(description), "regex"
+
+    prompt = (
+        "你是学术检索专家。"
+        "从以下研究描述中提取4-6个最核心的中文学术关键词，用于中文数据库检索。"
+        "只返回 JSON 数组，不要解释。\n\n"
+        f"描述：{description[:400]}\n\n"
+        '示例输出：["关键词1", "关键词2", "关键词3"]'
+    )
+    try:
+        result = await llm_manager.generate(prompt, temperature=0.1)
+        if result:
+            match = re.search(r'\[.*?\]', result, re.DOTALL)
+            if match:
+                import json as _json
+                keywords = _json.loads(match.group())
+                if keywords and isinstance(keywords, list) and len(keywords) >= 2:
+                    valid = [str(k).strip() for k in keywords if str(k).strip()]
+                    if valid:
+                        query = " ".join(valid[:6])
+                        logger.debug("[QueryBuilder] LLM中文关键词: %s", query[:100])
+                        return query, "llm"
+    except Exception as e:
+        logger.warning("[QueryBuilder] LLM中文提取失败，回退正则: %s", e)
+
+    return _extract_core_query(description), "regex"
 
 
 # 领域到数据源的映射

@@ -173,6 +173,7 @@ async def _execute_round_async(round_id_str: str):
                 llm_manager=llm_manager,
                 search_config=project.search_config,
                 project_domains=project.domains,
+                project_title=project.title,
             )
 
             # [Harness] If agent produced a plan, overlay it onto the deterministic QueryPlan
@@ -227,6 +228,45 @@ async def _execute_round_async(round_id_str: str):
             )
             await db.commit()
 
+            # 4b. 加载用户确认的 per-source 关键词（如果有）
+            per_source_queries = None
+            dynamic_synonyms = None
+            if settings.enable_per_source_keywords:
+                try:
+                    import redis.asyncio as aioredis
+                    import json as _json
+                    r = aioredis.from_url(settings.redis_url)
+                    try:
+                        raw = await r.get(f"keyword_plan:{round_id_str}")
+                        if raw:
+                            plan_data = _json.loads(raw)
+                            if plan_data.get("confirmed"):
+                                per_source_queries = {
+                                    p["source_id"]: p["query"]
+                                    for p in plan_data.get("source_plans", [])
+                                    if p.get("enabled", True)
+                                }
+                                if per_source_queries:
+                                    query_plan.sources = [
+                                        s for s in query_plan.sources
+                                        if s in per_source_queries
+                                    ]
+                                    logger.info(
+                                        "[PerSourceKW] 使用用户确认的 %d 个源查询词",
+                                        len(per_source_queries),
+                                    )
+                            # 加载动态同义词（LLM 生成的项目特定同义词表）
+                            dynamic_synonyms = plan_data.get("synonyms")
+                            if dynamic_synonyms:
+                                logger.info(
+                                    "[PerSourceKW] 加载 %d 组动态同义词",
+                                    len(dynamic_synonyms),
+                                )
+                    finally:
+                        await r.close()
+                except Exception as e:
+                    logger.warning("[PerSourceKW] 加载确认关键词失败，使用默认: %s", e)
+
             # 5. 执行检索 — Agent Search Loop（自适应多轮迭代）或单次执行
             from app.harness.search_loop import AgentSearchLoop
             search_loop = AgentSearchLoop()
@@ -236,6 +276,8 @@ async def _execute_round_async(round_id_str: str):
                 scoring_weights=scoring_weights,
                 profile_embedding=profile_embedding,
                 llm_manager=llm_manager if settings.enable_agent_planning else None,
+                per_source_queries=per_source_queries,
+                dynamic_synonyms=dynamic_synonyms,
             )
             selected_docs = loop_result.all_docs
             total_candidates = loop_result.total_candidates

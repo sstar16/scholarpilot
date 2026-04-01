@@ -48,6 +48,14 @@ export const projectApi = {
 export const searchApi = {
   startRound: (projectId: string) =>
     api.post(`/api/projects/${projectId}/rounds/start`),
+  prepareRound: (projectId: string) =>
+    api.post(`/api/projects/${projectId}/rounds/prepare`),
+  confirmKeywords: (projectId: string, roundId: string, sourcePlans: any[]) =>
+    api.post(`/api/projects/${projectId}/rounds/${roundId}/confirm-keywords`, {
+      source_plans: sourcePlans,
+    }),
+  getKeywordPlan: (projectId: string, roundId: string) =>
+    api.get(`/api/projects/${projectId}/rounds/${roundId}/keyword-plan`),
   getRoundStatus: (projectId: string, roundId: string) =>
     api.get(`/api/projects/${projectId}/rounds/${roundId}/status`),
   getRoundResults: (projectId: string, roundId: string) =>

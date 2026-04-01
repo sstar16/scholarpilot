@@ -18,6 +18,10 @@ export const useSearchStore = defineStore('search', () => {
   let drainTimer: ReturnType<typeof setInterval> | null = null
   const statusText = ref('') // current status description
 
+  // Per-source keyword confirmation state
+  const keywordPlan = ref<any>(null)
+  const awaitingKeywordConfirmation = ref(false)
+
   const isStarting = computed(() => loading.value)
 
   const ratedCount = computed(() => Object.keys(feedbackDrafts).length)
@@ -33,6 +37,18 @@ export const useSearchStore = defineStore('search', () => {
       if (active && (active.status === 'running' || active.status === 'pending')) {
         startPolling(pid, active.id)
       }
+      // Restore keyword confirmation state if round is awaiting_keywords
+      if (active && active.status === 'awaiting_keywords') {
+        awaitingKeywordConfirmation.value = true
+        // Try to recover keyword plan from Redis
+        try {
+          const kwRes = await searchApi.getKeywordPlan(pid, active.id)
+          keywordPlan.value = kwRes.data
+        } catch {
+          // Plan expired — user needs to restart
+          awaitingKeywordConfirmation.value = false
+        }
+      }
     }
   }
 
@@ -46,6 +62,52 @@ export const useSearchStore = defineStore('search', () => {
       if (idx >= 0) rounds.value[idx] = res.data
       else rounds.value.push(res.data)
       startPolling(pid, res.data.id)
+      return res.data
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function prepareRound(pid: string) {
+    projectId.value = pid
+    loading.value = true
+    try {
+      const res = await searchApi.prepareRound(pid)
+      keywordPlan.value = res.data
+      awaitingKeywordConfirmation.value = true
+      // Also update currentRound with round info
+      currentRound.value = {
+        id: res.data.round_id,
+        round_number: res.data.round_number,
+        status: 'awaiting_keywords',
+        progress: 0.05,
+        progress_message: '关键词已生成，等待确认...',
+        search_queries: {
+          base_query: res.data.base_query,
+          original_chinese_query: res.data.original_chinese_query,
+          english_query_source: res.data.english_query_source,
+          cn_query_source: res.data.cn_query_source,
+        },
+      }
+      const idx = rounds.value.findIndex((r: any) => r.id === res.data.round_id)
+      if (idx >= 0) rounds.value[idx] = currentRound.value
+      else rounds.value.push(currentRound.value)
+      return res.data
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function confirmKeywords(pid: string, roundId: string, sourcePlans: any[]) {
+    loading.value = true
+    try {
+      const res = await searchApi.confirmKeywords(pid, roundId, sourcePlans)
+      currentRound.value = res.data
+      awaitingKeywordConfirmation.value = false
+      keywordPlan.value = null
+      const idx = rounds.value.findIndex((r: any) => r.id === roundId)
+      if (idx >= 0) rounds.value[idx] = res.data
+      startPolling(pid, roundId)
       return res.data
     } finally {
       loading.value = false
@@ -104,13 +166,30 @@ export const useSearchStore = defineStore('search', () => {
     Object.keys(feedbackDrafts).forEach(k => delete feedbackDrafts[k])
     documents.value = []
 
-    // Re-fetch rounds to discover the new round created by backend, then poll it
+    // Re-fetch rounds to discover the new round created by backend
     await fetchRounds(pid)
     const newRound = rounds.value.find(
       (r: any) => r.status === 'running' || r.status === 'pending'
     )
     if (newRound) {
-      startPolling(pid, newRound.id)
+      // Try per-source keywords flow for next round
+      try {
+        const kwResult = await searchApi.prepareRound(pid)
+        keywordPlan.value = kwResult.data
+        awaitingKeywordConfirmation.value = true
+        currentRound.value = {
+          ...newRound,
+          status: 'awaiting_keywords',
+          search_queries: {
+            base_query: kwResult.data.base_query,
+            original_chinese_query: kwResult.data.original_chinese_query,
+          },
+        }
+        return res.data
+      } catch {
+        // Feature disabled — fall back to polling
+        startPolling(pid, newRound.id)
+      }
     }
 
     return res.data
@@ -188,6 +267,8 @@ export const useSearchStore = defineStore('search', () => {
     currentRound, rounds, documents, sourceStats, feedbackDrafts, loading,
     isStarting, ratedCount,
     sseConnected, streamingDocs, statusText, handleSSEEvent,
-    fetchRounds, startRound, startPolling, loadRoundResults, setFeedback, submitFeedback, reset,
+    keywordPlan, awaitingKeywordConfirmation,
+    fetchRounds, startRound, prepareRound, confirmKeywords,
+    startPolling, loadRoundResults, setFeedback, submitFeedback, reset,
   }
 })

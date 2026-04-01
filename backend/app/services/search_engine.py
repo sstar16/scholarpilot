@@ -27,6 +27,8 @@ async def execute_search(
     exclude_doc_keys: Optional[Set[str]] = None,
     scoring_weights: Optional[Dict[str, float]] = None,
     profile_embedding: Optional[List[float]] = None,
+    per_source_queries: Optional[Dict[str, str]] = None,
+    dynamic_synonyms: Optional[Dict[str, List[str]]] = None,
 ) -> tuple[List[Dict], int, Dict[str, Dict]]:
     """
     执行单轮搜索（真正并行）
@@ -64,9 +66,12 @@ async def execute_search(
         fetcher = ALL_FETCHERS.get(source_id)
         if not fetcher:
             continue
+        # Per-source 查询词优先（用户确认后的定制查询）
+        if per_source_queries and source_id in per_source_queries:
+            query = per_source_queries[source_id]
         # 中文数据源用原始中文查询词（含中文画像词追加）；
         # 英文数据源 round>=3 时追加 profile_query_extension 扩大召回
-        if source_id in _CHINESE_SOURCES and query_plan.original_chinese_query:
+        elif source_id in _CHINESE_SOURCES and query_plan.original_chinese_query:
             query = query_plan.original_chinese_query
         elif query_plan.profile_query_extension:
             query = f"{query_plan.base_query} {query_plan.profile_query_extension}"
@@ -139,6 +144,7 @@ async def execute_search(
         exclude_doc_keys=exclude_doc_keys,
         scoring_weights=scoring_weights,
         profile_embedding=profile_embedding,
+        dynamic_synonyms=dynamic_synonyms,
     )
 
     # 保底机制：若评分后 0 篇但有候选文档，放宽条件重试
@@ -151,6 +157,7 @@ async def execute_search(
             exclude_terms=None,
             exclude_doc_keys=None,
             scoring_weights=scoring_weights,
+            dynamic_synonyms=dynamic_synonyms,
         )
 
     return selected, total_candidates, source_stats

@@ -10,8 +10,24 @@
         <div class="topbar-left">
           <el-button text @click="router.push('/dashboard')"><el-icon><ArrowLeft /></el-icon></el-button>
           <div>
-            <h2 class="project-title">{{ project.title }}</h2>
-            <span class="project-domain">{{ (project.domains || [project.domain]).join(' · ') }}</span>
+            <h2 class="project-title" v-if="!editingTitle" @dblclick="startEditTitle" :title="'双击编辑标题'">
+              {{ project.title }}
+              <el-icon class="edit-hint" @click="startEditTitle"><Edit /></el-icon>
+            </h2>
+            <div v-else class="inline-edit">
+              <el-input v-model="editTitleValue" size="small" @keyup.enter="saveTitle" @keyup.escape="editingTitle = false" ref="titleInputRef" />
+              <el-button size="small" type="primary" @click="saveTitle">保存</el-button>
+              <el-button size="small" @click="editingTitle = false">取消</el-button>
+            </div>
+            <span class="project-domain" v-if="!editingDesc" @dblclick="startEditDesc" :title="'双击编辑描述'">
+              {{ (project.domains || [project.domain]).join(' · ') }}
+              <el-icon class="edit-hint" @click="startEditDesc"><Edit /></el-icon>
+            </span>
+            <div v-else class="inline-edit">
+              <el-input v-model="editDescValue" type="textarea" :rows="3" size="small" />
+              <el-button size="small" type="primary" @click="saveDesc">保存</el-button>
+              <el-button size="small" @click="editingDesc = false">取消</el-button>
+            </div>
           </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px">
@@ -73,8 +89,16 @@
               </el-tag>
             </div>
 
+            <!-- Per-source keyword confirmation panel -->
+            <KeywordConfirmPanel
+              v-if="searchStore.awaitingKeywordConfirmation && searchStore.keywordPlan"
+              :keyword-plan="searchStore.keywordPlan"
+              @confirm="onKeywordsConfirmed"
+              @auto-confirm="onAutoConfirmKeywords"
+            />
+
             <!-- Searching/summarizing state — real-time SSE powered -->
-            <div v-if="isProcessing" class="processing-state-v2">
+            <div v-if="isProcessing && !searchStore.awaitingKeywordConfirmation" class="processing-state-v2">
               <!-- Particle animation + status text -->
               <SearchingAnimation
                 :status="currentRound?.status"
@@ -447,6 +471,7 @@ import SourceProgressCompact from '../components/search/SourceProgressCompact.vu
 import AgentPlanView from '../components/pipeline/AgentPlanView.vue'
 import SearchingAnimation from '../components/search/SearchingAnimation.vue'
 import DocumentStream from '../components/search/DocumentStream.vue'
+import KeywordConfirmPanel from '../components/search/KeywordConfirmPanel.vue'
 import { useSSE } from '../composables/useSSE'
 
 const route = useRoute()
@@ -458,6 +483,48 @@ const devViewOpen = ref(false)
 const llmAllOpen = ref(false)
 const expandedSources = reactive<Set<string>>(new Set())
 const expandedLlmDocs = reactive<Set<string>>(new Set())
+
+// Inline edit title/description
+const editingTitle = ref(false)
+const editingDesc = ref(false)
+const editTitleValue = ref('')
+const editDescValue = ref('')
+const titleInputRef = ref<any>(null)
+
+function startEditTitle() {
+  editTitleValue.value = project.value?.title || ''
+  editingTitle.value = true
+  setTimeout(() => titleInputRef.value?.focus(), 50)
+}
+
+function startEditDesc() {
+  editDescValue.value = project.value?.description || ''
+  editingDesc.value = true
+}
+
+async function saveTitle() {
+  if (!editTitleValue.value.trim()) return
+  try {
+    await projectApi.update(route.params.id as string, { title: editTitleValue.value.trim() })
+    await projectStore.fetchProject(route.params.id as string)
+    editingTitle.value = false
+    ElMessage.success('标题已更新，下一轮检索将使用新标题生成关键词')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.detail || '保存失败')
+  }
+}
+
+async function saveDesc() {
+  if (!editDescValue.value.trim()) return
+  try {
+    await projectApi.update(route.params.id as string, { description: editDescValue.value.trim() })
+    await projectStore.fetchProject(route.params.id as string)
+    editingDesc.value = false
+    ElMessage.success('描述已更新，下一轮检索将使用新描述生成关键词')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.detail || '保存失败')
+  }
+}
 
 // SSE real-time streaming
 const sse = useSSE()
@@ -638,15 +705,15 @@ function roundDesc(round: any) {
 
 function roundStatusLabel(s: string) {
   return ({
-    pending: '待开始', searching: '检索中', summarizing: 'AI摘要生成中',
+    pending: '待开始', awaiting_keywords: '确认查询词', searching: '检索中', summarizing: 'AI摘要生成中',
     awaiting_feedback: '等待您评分', complete: '已完成',
   } as any)[s] ?? s
 }
 
 function roundStatusType(s: string) {
   return ({
-    searching: 'warning', summarizing: 'warning', awaiting_feedback: 'primary',
-    complete: 'success', pending: 'info',
+    awaiting_keywords: 'warning', searching: 'warning', summarizing: 'warning',
+    awaiting_feedback: 'primary', complete: 'success', pending: 'info',
   } as any)[s] ?? ''
 }
 
@@ -659,15 +726,59 @@ function statusType(s: string) {
 }
 
 async function startRound() {
+  const pid = route.params.id as string
   try {
-    const round = await searchStore.startRound(route.params.id as string)
-    await projectStore.fetchProject(route.params.id as string)
-    // Connect SSE for real-time streaming
+    // Try per-source keyword flow first (if feature enabled on backend)
+    try {
+      const kwResult = await searchStore.prepareRound(pid)
+      await projectStore.fetchProject(pid)
+      // Show keyword confirmation panel — search starts after user confirms
+      return
+    } catch (prepareErr: any) {
+      // Feature disabled (400) or other error — fall back to direct start
+      if (prepareErr.response?.status !== 400) {
+        throw prepareErr
+      }
+    }
+    // Fallback: direct start (original flow)
+    const round = await searchStore.startRound(pid)
+    await projectStore.fetchProject(pid)
     if (round?.id) {
       setupSSE(round.id)
     }
   } catch (e: any) {
     ElMessage.error(e.response?.data?.detail || '启动检索失败')
+  }
+}
+
+async function onKeywordsConfirmed(plans: any[]) {
+  const pid = route.params.id as string
+  const roundId = searchStore.currentRound?.id
+  if (!roundId) return
+  try {
+    await searchStore.confirmKeywords(pid, roundId, plans)
+    await projectStore.fetchProject(pid)
+    setupSSE(roundId)
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.detail || '确认关键词失败')
+  }
+}
+
+async function onAutoConfirmKeywords(plans: any[]) {
+  // 先确认本轮，然后标记后续自动确认
+  await onKeywordsConfirmed(plans)
+  // 保存 auto-confirm 标记到 project search_config
+  try {
+    const pid = route.params.id as string
+    await projectApi.update(pid, {
+      search_config: {
+        ...(projectStore.currentProject?.search_config || {}),
+        auto_confirm_keywords: true,
+      },
+    })
+    ElMessage.success('已开启自动确认，后续轮次将跳过关键词确认')
+  } catch {
+    // non-critical, ignore
   }
 }
 
@@ -737,6 +848,38 @@ onMounted(async () => {
   margin: 0; font-family: var(--font-display);
   font-size: 19px; font-weight: 900; color: var(--ink-900);
   letter-spacing: -0.3px;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.project-title .edit-hint {
+  font-size: 14px;
+  color: var(--ink-300);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.project-title:hover .edit-hint,
+.project-domain:hover .edit-hint {
+  opacity: 1;
+}
+.inline-edit {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 0;
+}
+.inline-edit .el-input, .inline-edit .el-textarea {
+  flex: 1;
+}
+.project-domain .edit-hint {
+  font-size: 12px;
+  color: var(--ink-300);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  margin-left: 4px;
 }
 .project-domain {
   font-size: 11px; color: var(--ink-400);

@@ -60,6 +60,8 @@ class AgentSearchLoop:
         scoring_weights: Optional[Dict[str, float]] = None,
         profile_embedding: Optional[List[float]] = None,
         llm_manager=None,
+        per_source_queries: Optional[Dict[str, str]] = None,
+        dynamic_synonyms: Optional[Dict[str, List[str]]] = None,
     ) -> LoopResult:
         """
         Run the adaptive search loop.
@@ -79,6 +81,8 @@ class AgentSearchLoop:
             exclude_doc_keys=exclude_doc_keys,
             scoring_weights=scoring_weights,
             profile_embedding=profile_embedding,
+            per_source_queries=per_source_queries,
+            dynamic_synonyms=dynamic_synonyms,
         )
         elapsed = int((time.time() - t0) * 1000)
         all_source_stats.update(stats)

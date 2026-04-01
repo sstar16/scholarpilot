@@ -261,12 +261,42 @@ cloudflared tunnel --url http://localhost
   rules/source_policy.md       — 数据源策略
 ```
 
+### Per-Source Query Adapters（2026-04-01，ai-powers 分支）
+
+每个数据源拥有独立的查询词优化 adapter，用户可在搜索前确认/编辑每个源的查询词。
+
+**Feature Flag**: `enable_per_source_keywords: bool = True`（默认开启，`.env` 中 `ENABLE_PER_SOURCE_KEYWORDS=false` 可关闭）
+
+**Two-Phase Round Flow**（feature 开启时）:
+```
+POST /rounds/prepare → 创建 round + 生成 per-source 关键词 → 返回方案
+  ↓ 用户在前端 KeywordConfirmPanel 确认/编辑
+POST /rounds/{id}/confirm-keywords → 存入 Redis → 启动 Celery 检索任务
+```
+
+**新增文件**:
+| 文件 | 说明 |
+|------|------|
+| `backend/app/services/source_query_adapters.py` | Adapter 注册表 + LLM 批量优化 + heuristic fallback |
+| `backend/app/schemas/keywords.py` | Pydantic schemas |
+| `frontend/src/components/search/KeywordConfirmPanel.vue` | 可编辑的 per-source 关键词确认面板 |
+
+**Adapter 清单**: EPOQueryAdapter(CQL)、ArXivQueryAdapter(category)、DBLPQueryAdapter(精简)、ChineseSourceAdapter(soopat/openalex_zh)、DefaultAdapter(passthrough)
+
+**新增 API**:
+- `POST /api/projects/{id}/rounds/prepare` — Phase 1: 生成关键词方案
+- `GET /api/projects/{id}/rounds/{rid}/keyword-plan` — 获取已生成方案（页面刷新恢复）
+- `POST /api/projects/{id}/rounds/{rid}/confirm-keywords` — Phase 2: 确认后启动搜索
+
+**关键词存储**: Redis `keyword_plan:{round_id}`，TTL 10 分钟
+
 ## Phase 规划
 
 | Phase | 关键功能 | 状态 |
 |-------|---------|------|
 | 1 MVP | 5轮渐进检索、AI摘要、用户画像、Docker部署 | ✅ **dev0 发布**（2026-03-29）|
 | 1.5 AI Powers | Harness Engineering（Tool Registry / Hook / Agent / Skills） | ✅ **ai-powers 分支**（2026-04-01）|
+| 1.6 Per-Source Keywords | Per-Source Query Adapters + 用户确认 UI | ✅ **ai-powers 分支**（2026-04-01）|
 | 2 | 万方/百度学术、PDF全文、pgvector embedding、邮件通知 | 待开发 |
 | 3 | EPO/WIPO专利、多语言检索、文献关系图、协作功能 | 规划中 |
 

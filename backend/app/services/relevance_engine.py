@@ -54,17 +54,27 @@ SYNONYM_MAP = {
     "sensor": ["sensing", "detection", "biosensor"],
 }
 
-# 默认评分权重
+# 默认评分权重（论文/预印本）
 DEFAULT_WEIGHTS = {"keyword": 0.60, "citation": 0.25, "recency": 0.15}
+# 专利文档权重（citation_count 通常为 0，降低引用权重，提升关键词权重）
+PATENT_WEIGHTS = {"keyword": 0.75, "citation": 0.05, "recency": 0.20}
 
 
-def _expand_with_synonyms(terms: List[str]) -> List[str]:
-    """将查询词扩展为包含同义词的列表"""
+def _expand_with_synonyms(terms: List[str], dynamic_synonyms: Optional[Dict[str, List[str]]] = None) -> List[str]:
+    """将查询词扩展为包含同义词的列表，支持动态同义词（LLM 生成）"""
+    # 合并静态和动态同义词
+    merged_map = dict(SYNONYM_MAP)
+    if dynamic_synonyms:
+        for k, v in dynamic_synonyms.items():
+            if k in merged_map:
+                merged_map[k] = list(set(merged_map[k] + v))
+            else:
+                merged_map[k] = v
     expanded = list(terms)
     for term in terms:
         term_l = term.lower().strip()
-        if term_l in SYNONYM_MAP:
-            for syn in SYNONYM_MAP[term_l]:
+        if term_l in merged_map:
+            for syn in merged_map[term_l]:
                 if syn not in [t.lower() for t in expanded]:
                     expanded.append(syn)
     return expanded
@@ -99,8 +109,9 @@ def keyword_score(
     query_terms: List[str],
     exclude_terms: Optional[List[str]] = None,
     idf_weights: Optional[Dict[str, float]] = None,
+    dynamic_synonyms: Optional[Dict[str, List[str]]] = None,
 ) -> float:
-    """关键词相关度打分 0.0-1.0，支持同义词扩展和 IDF 加权"""
+    """关键词相关度打分 0.0-1.0，支持同义词扩展（静态+动态）和 IDF 加权"""
     title = doc.get("title", "") or ""
     abstract = doc.get("abstract", "") or ""
     ai_summary = doc.get("ai_summary", "") or ""
@@ -120,8 +131,8 @@ def keyword_score(
     else:
         score_penalty = False
 
-    # 扩展同义词
-    expanded = _expand_with_synonyms(query_terms)
+    # 扩展同义词（静态 + 动态）
+    expanded = _expand_with_synonyms(query_terms, dynamic_synonyms)
 
     total_weight = 0.0
     matched_weight = 0.0
@@ -209,12 +220,10 @@ def select_top_documents(
     scoring_weights: Optional[Dict[str, float]] = None,
     min_return: int = 5,
     profile_embedding: Optional[List[float]] = None,
+    dynamic_synonyms: Optional[Dict[str, List[str]]] = None,
 ) -> List[Dict]:
-    """对候选文档打分并选出 top-N，支持跨轮去重和综合评分"""
-    weights = scoring_weights or DEFAULT_WEIGHTS
-    w_kw = weights.get("keyword", 0.60)
-    w_cite = weights.get("citation", 0.25)
-    w_rec = weights.get("recency", 0.15)
+    """对候选文档打分并选出 top-N，支持跨轮去重、综合评分、per-doc-type 自适应权重"""
+    base_weights = scoring_weights or DEFAULT_WEIGHTS
 
     # 跨轮去重：排除已出现过或标为不相关的文档
     if exclude_doc_keys:
@@ -238,8 +247,8 @@ def select_top_documents(
     # 找到最大引用数用于归一化
     max_citations = max((d.get("citation_count", 0) or 0) for d in docs) if docs else 0
 
-    # 计算批次 IDF 权重
-    idf_weights = _compute_batch_idf(docs, _expand_with_synonyms(query_terms))
+    # 计算批次 IDF 权重（含动态同义词）
+    idf_weights = _compute_batch_idf(docs, _expand_with_synonyms(query_terms, dynamic_synonyms))
 
     # 如果有画像 embedding，批量计算候选文档的 embedding（CPU 上 50 篇约 1s）
     doc_embeddings: Optional[List] = None
@@ -258,9 +267,19 @@ def select_top_documents(
 
     scored = []
     for idx, doc in enumerate(docs):
-        kw = keyword_score(doc, query_terms, effective_exclude, idf_weights=idf_weights)
+        kw = keyword_score(doc, query_terms, effective_exclude, idf_weights=idf_weights,
+                           dynamic_synonyms=dynamic_synonyms)
         cite = citation_score(doc.get("citation_count", 0) or 0, max_citations)
         rec = recency_score(doc.get("publication_date"))
+        # 专利文档使用专利权重（citation 权重降低，keyword 权重提升）
+        doc_type = doc.get("doc_type", "paper")
+        if doc_type == "patent":
+            weights = PATENT_WEIGHTS
+        else:
+            weights = base_weights
+        w_kw = weights.get("keyword", 0.60)
+        w_cite = weights.get("citation", 0.25)
+        w_rec = weights.get("recency", 0.15)
         base = round(w_kw * kw + w_cite * cite + w_rec * rec, 4)
 
         # 向量相似度混合评分（仅在画像 embedding 可用且加载成功时）

@@ -177,14 +177,123 @@ class OpenAlexFetcher(AbstractFetcher):
 
 
 class OpenAlexZhFetcher(OpenAlexFetcher):
-    """OpenAlex 中文论文专用：自动加 language:zh 过滤，使用原始中文查询词"""
+    """
+    OpenAlex 中文论文专用 — 双策略合并：
+    策略A: 中文关键词 + language:zh（覆盖有中文元数据的论文）
+    策略B: 英文关键词 + institutions.country_code:cn（覆盖中国机构发英文论文）
+    两策略合并去重后返回。
+
+    关键发现：OpenAlex 中文论文多数用英文元数据索引，单靠 language:zh 返回极少。
+    中文搜索词数量 ≤3 个，否则 0 结果。
+    """
     source_id = "openalex_zh"
 
     async def fetch(self, query: str, max_results=20, year_from=None, year_to=None, language=None) -> List[Dict]:
-        results = await super().fetch(query, max_results, year_from, year_to, language="zh")
-        for doc in results:
-            doc["source"] = "openalex_zh"
-        return results
+        import asyncio as _aio
+
+        # 解析双策略查询格式: "中文词|||英文词"
+        if "|||" in query:
+            zh_query, en_query = query.split("|||", 1)
+            zh_query = zh_query.strip()
+            en_query = en_query.strip()
+        else:
+            # 兼容旧格式（纯中文或纯英文）
+            zh_query = self._limit_terms(query, 3)
+            en_words = [w for w in query.split() if not self._is_chinese(w)]
+            en_query = " ".join(en_words[:5]) if en_words else query
+
+        logger.info("[OpenAlex_zh] 策略A(zh): '%s', 策略B(en+cn): '%s'", zh_query[:50], en_query[:50])
+
+        async def _empty():
+            return []
+
+        # 策略A: 中文词 + language:zh
+        task_a = super().fetch(zh_query, max_results, year_from, year_to, language="zh") if zh_query else _empty()
+
+        # 策略B: 英文词 + country_code:cn（这是主力策略）
+        task_b = self._fetch_cn_institutions(en_query, max_results, year_from, year_to) if en_query else _empty()
+
+
+        results_a, results_b = await _aio.gather(task_a, task_b, return_exceptions=True)
+
+        # 合并去重
+        seen = set()
+        merged = []
+        for batch in [results_a, results_b]:
+            if isinstance(batch, Exception):
+                logger.warning("[OpenAlex_zh] 策略失败: %s", batch)
+                continue
+            for doc in batch:
+                doc["source"] = "openalex_zh"
+                key = doc.get("external_id") or doc.get("title", "")
+                if key not in seen:
+                    seen.add(key)
+                    merged.append(doc)
+
+        logger.info(
+            "[OpenAlex_zh] 策略A(language:zh)=%d, 策略B(country:cn)=%d, 合并去重=%d",
+            len(results_a) if not isinstance(results_a, Exception) else 0,
+            len(results_b) if not isinstance(results_b, Exception) else 0,
+            len(merged),
+        )
+        return merged[:max_results]
+
+    async def _fetch_cn_institutions(self, query: str, max_results, year_from, year_to) -> List[Dict]:
+        """用英文关键词 + institutions.country_code:cn 过滤"""
+        params = {"search": query, "per_page": min(max_results, 200), "mailto": "user@example.com"}
+        filters = ["institutions.country_code:cn"]
+        if year_from:
+            filters.append(f"from_publication_date:{year_from}-01-01")
+        if year_to:
+            filters.append(f"to_publication_date:{year_to}-12-31")
+        params["filter"] = ",".join(filters)
+
+        import httpx
+        async with httpx.AsyncClient(timeout=self.DEFAULT_TIMEOUT) as client:
+            try:
+                r = await client.get(f"{OPENALEX_BASE}/works", params=params)
+                if r.status_code == 200:
+                    results = r.json().get("results", [])
+                    papers = []
+                    for work in results:
+                        authorships = work.get("authorships", [])
+                        authors = ", ".join([a.get("author", {}).get("display_name", "") for a in authorships[:5]])
+                        if len(authorships) > 5:
+                            authors += " et al."
+                        abstract = self._reconstruct_abstract(work.get("abstract_inverted_index"))
+                        papers.append({
+                            "source": "openalex_zh",
+                            "external_id": work.get("id", ""),
+                            "doc_type": "paper",
+                            "title": work.get("title", ""),
+                            "authors": authors,
+                            "abstract": abstract,
+                            "publication_date": work.get("publication_date"),
+                            "journal": ((work.get("primary_location") or {}).get("source") or {}).get("display_name"),
+                            "doi": work.get("doi"),
+                            "url": work.get("id"),
+                            "citation_count": work.get("cited_by_count", 0),
+                            "pdf_url": (work.get("primary_location") or {}).get("pdf_url") if work.get("primary_location") else None,
+                        })
+                    return papers[:max_results]
+            except Exception as e:
+                logger.warning("[OpenAlex_zh] country_code:cn 策略失败: %s", e)
+        return []
+
+    @staticmethod
+    def _limit_terms(query: str, n: int) -> str:
+        """限制关键词数量（中文或英文均适用）"""
+        import re as _re
+        cn_terms = _re.findall(r'[\u4e00-\u9fff]+', query)
+        if cn_terms:
+            return " ".join(cn_terms[:n])
+        words = query.split()
+        return " ".join(words[:n])
+
+    @staticmethod
+    def _is_chinese(text: str) -> bool:
+        import re as _re
+        return bool(_re.search(r'[\u4e00-\u9fff]', text))
 
 
 class SemanticScholarFetcher(AbstractFetcher):

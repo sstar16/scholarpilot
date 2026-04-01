@@ -237,11 +237,19 @@ async def submit_feedback(
         next_round_id = next_round.id
         next_round_number = next_round.round_number
 
-        from app.workers.search_tasks import execute_round
-        execute_round.delay(str(next_round.id))
+        # 当 per-source keywords 开启时，不自动 dispatch 搜索任务
+        # 由前端调用 prepareRound → confirmKeywords 流程
+        from app.config import settings as _settings
+        if not _settings.enable_per_source_keywords:
+            from app.workers.search_tasks import execute_round
+            execute_round.delay(str(next_round.id))
 
         reason_suffix = f"（{decision_reason}）" if decision_reason else ""
-        message = f"第{round_.round_number}轮反馈已保存，AI 决定继续搜索{reason_suffix}，已启动第{next_round_number}轮"
+        needs_confirm = _settings.enable_per_source_keywords
+        if needs_confirm:
+            message = f"第{round_.round_number}轮反馈已保存，请确认第{next_round_number}轮关键词后开始检索"
+        else:
+            message = f"第{round_.round_number}轮反馈已保存，AI 决定继续搜索{reason_suffix}，已启动第{next_round_number}轮"
     else:
         await activate_monitoring(project, db)
         monitoring_activated = True

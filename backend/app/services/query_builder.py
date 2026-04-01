@@ -101,24 +101,31 @@ async def build_query(
     llm_manager=None,
     search_config: Optional[Dict[str, Any]] = None,
     project_domains: Optional[List[str]] = None,
+    project_title: Optional[str] = None,
 ) -> QueryPlan:
     """
     为指定轮次构建查询计划。
     支持自定义搜索配置和多领域。
+    project_title 会与 description 合并用于关键词提取（标题通常更精准）。
     """
     from datetime import datetime
     config = _get_round_config(round_number, search_config)
 
+    # 标题 + 描述合并（标题放前面，权重更高）
+    full_description = project_description
+    if project_title:
+        full_description = f"{project_title}。{project_description}"
+
     # 提取/翻译核心关键词（中英文并行，避免串行 LLM 等待）
     import asyncio as _asyncio
-    is_chinese = _is_mostly_chinese(project_description)
+    is_chinese = _is_mostly_chinese(full_description)
     if is_chinese:
         (base_query, english_query_source), (original_chinese_query, cn_query_source) = await _asyncio.gather(
-            _get_english_query(project_description, llm_manager),
-            _get_chinese_query(project_description, llm_manager),
+            _get_english_query(full_description, llm_manager),
+            _get_chinese_query(full_description, llm_manager),
         )
     else:
-        base_query, english_query_source = await _get_english_query(project_description, llm_manager)
+        base_query, english_query_source = await _get_english_query(full_description, llm_manager)
         original_chinese_query = None
         cn_query_source = "none"
 
@@ -211,12 +218,19 @@ async def _get_english_query(description: str, llm_manager) -> tuple[str, str]:
         return _extract_core_query(description), "regex"
 
     prompt = (
-        "You are an academic search query generator. "
-        "Extract 6-8 concise English keywords suitable for searching PubMed, arXiv, and OpenAlex "
-        "from the following Chinese research description. "
-        "Return ONLY a JSON array of strings, no explanation.\n\n"
+        "You are an expert academic/patent search query generator. "
+        "Extract 6-8 DOMAIN-SPECIFIC English keywords from the Chinese research description below. "
+        "These keywords will be used to search PubMed, arXiv, OpenAlex, and patent databases.\n\n"
+        "CRITICAL RULES:\n"
+        "1. Use SPECIFIC technical terms, NOT generic words. "
+        "Example: 'seamless capsule encapsulation' NOT 'capsule manufacturing'.\n"
+        "2. Include industry jargon and precise terminology.\n"
+        "3. Mix broad concepts (2-3 words) with narrow terms (1 word).\n"
+        "4. Include both academic AND patent-style terminology.\n\n"
         f"Description: {description[:400]}\n\n"
-        'Example output: ["keyword1 keyword2", "keyword3", "keyword4"]'
+        'Return ONLY a JSON array of strings, no explanation.\n'
+        'Example: ["seamless capsule", "tobacco flavor bead", "automated production line", '
+        '"quality inspection", "continuous drying"]'
     )
     try:
         result = await llm_manager.generate(prompt, temperature=0.1)

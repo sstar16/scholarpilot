@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     agent_planning_provider: str = "deepseek" # Preferred LLM for agent planning (cheap)
     max_llm_cost_per_round: float = 0.10      # Hard budget ceiling per round (USD)
     max_autonomous_rounds: int = 15           # Safety cap for autonomous mode
+    enable_per_source_keywords: bool = True   # Per-source keyword optimization + confirmation UI
 
     # 应用
     debug: bool = False

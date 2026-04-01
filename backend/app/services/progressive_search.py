@@ -42,6 +42,18 @@ async def create_next_round(
     return round_
 
 
+async def mark_round_awaiting_keywords(round_id: uuid.UUID, db: AsyncSession):
+    """Phase 1 完成后标记为等待用户确认关键词"""
+    await db.execute(
+        update(SearchRound).where(SearchRound.id == round_id).values(
+            status="awaiting_keywords",
+            progress=0.05,
+            progress_message="关键词已生成，等待确认...",
+        )
+    )
+    await db.commit()
+
+
 async def mark_round_searching(round_id: uuid.UUID, db: AsyncSession):
     await db.execute(
         update(SearchRound).where(SearchRound.id == round_id).values(

@@ -10,6 +10,17 @@ from typing import Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
+# 延迟加载的 SentenceTransformer 单例（首次调用时初始化）
+_sentence_model = None
+
+def _get_sentence_model():
+    global _sentence_model
+    if _sentence_model is None:
+        from sentence_transformers import SentenceTransformer
+        _sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _sentence_model
+
+
 STOP_WORDS = {
     "the", "a", "an", "and", "or", "in", "of", "to", "for", "with", "is", "are", "was",
     "that", "this", "been", "have", "has", "had", "not", "but", "from", "can", "will",
@@ -102,7 +113,12 @@ def keyword_score(
     if exclude_terms:
         for excl in exclude_terms:
             if excl.lower() in text:
-                return 0.0
+                score_penalty = True
+                break
+        else:
+            score_penalty = False
+    else:
+        score_penalty = False
 
     # 扩展同义词
     expanded = _expand_with_synonyms(query_terms)
@@ -151,6 +167,10 @@ def keyword_score(
     if not has_abstract:
         score *= 0.7
 
+    # 排除词命中：软降权而非归零，保留结果但排在后面
+    if score_penalty:
+        score *= 0.15
+
     return round(min(score, 1.0), 4)
 
 
@@ -188,6 +208,7 @@ def select_top_documents(
     exclude_doc_keys: Optional[Set[str]] = None,
     scoring_weights: Optional[Dict[str, float]] = None,
     min_return: int = 5,
+    profile_embedding: Optional[List[float]] = None,
 ) -> List[Dict]:
     """对候选文档打分并选出 top-N，支持跨轮去重和综合评分"""
     weights = scoring_weights or DEFAULT_WEIGHTS
@@ -220,12 +241,42 @@ def select_top_documents(
     # 计算批次 IDF 权重
     idf_weights = _compute_batch_idf(docs, _expand_with_synonyms(query_terms))
 
+    # 如果有画像 embedding，批量计算候选文档的 embedding（CPU 上 50 篇约 1s）
+    doc_embeddings: Optional[List] = None
+    profile_vec = None
+    profile_norm = 0.0
+    if profile_embedding is not None:
+        try:
+            import numpy as np
+            model = _get_sentence_model()
+            texts = [f"{d.get('title','') or ''} {d.get('abstract','') or ''}".strip() for d in docs]
+            doc_embeddings = model.encode(texts, show_progress_bar=False)
+            profile_vec = np.array(profile_embedding)
+            profile_norm = np.linalg.norm(profile_vec)
+        except Exception as e:
+            logger.warning("[embedding_score] 加载模型失败，跳过向量评分: %s", e)
+
     scored = []
-    for doc in docs:
+    for idx, doc in enumerate(docs):
         kw = keyword_score(doc, query_terms, effective_exclude, idf_weights=idf_weights)
         cite = citation_score(doc.get("citation_count", 0) or 0, max_citations)
         rec = recency_score(doc.get("publication_date"))
-        final = round(w_kw * kw + w_cite * cite + w_rec * rec, 4)
+        base = round(w_kw * kw + w_cite * cite + w_rec * rec, 4)
+
+        # 向量相似度混合评分（仅在画像 embedding 可用且加载成功时）
+        if doc_embeddings is not None and profile_vec is not None:
+            import numpy as np
+            doc_vec = doc_embeddings[idx]
+            doc_norm = float(np.linalg.norm(doc_vec))
+            if doc_norm > 0 and profile_norm > 0:
+                cos_sim = float(np.dot(profile_vec, doc_vec) / (profile_norm * doc_norm))
+                embed_score = max(0.0, cos_sim)
+                final = round(0.70 * base + 0.30 * embed_score, 4)
+            else:
+                final = base
+        else:
+            final = base
+
         scored.append({**doc, "_relevance_score": final, "_keyword_score": kw, "_citation_score": cite, "_recency_score": rec})
 
     # 排序：主键为相关度分数，同分时按元数据完整度（tiebreaker）

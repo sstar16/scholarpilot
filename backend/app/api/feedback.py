@@ -97,23 +97,44 @@ async def submit_feedback(
                     "title": doc.title,
                     "abstract": doc.abstract,
                     "source": doc.source,
+                    "ai_key_points": doc.ai_key_points or [],
                 },
             })
 
     await db.flush()
 
+    # 用 LLM 从反馈原因中提取结构化信号（正向/负向关键词），丰富画像更新质量
+    if feedback_dicts and any(fb.get("reason") for fb in feedback_dicts):
+        try:
+            from app.config import settings
+            from app.services.core.llm_providers import LLMProviderManager
+            from app.services.core.llm_config_store import load_llm_config
+            from app.services.llm_summarizer import LLMSummarizer
+            llm_manager = LLMProviderManager(default_ollama_host=settings.ollama_host)
+            await load_llm_config(llm_manager, settings.redis_url)
+            summarizer = LLMSummarizer(llm_manager)
+            for fb_dict in feedback_dicts:
+                if fb_dict.get("reason") and len(fb_dict["reason"]) >= 5:
+                    pos_sig, neg_sig = await summarizer.extract_feedback_signals(
+                        reason=fb_dict["reason"],
+                        relevance=fb_dict["relevance"],
+                    )
+                    fb_dict["positive_signals"] = pos_sig
+                    fb_dict["negative_signals"] = neg_sig
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("[feedback] 信号提取失败，画像仅用基础关键词: %s", e)
+
     # 更新用户画像
     if feedback_dicts:
         await update_profile_from_feedbacks(current_user.id, project_id, feedback_dicts, db)
 
+    # 异步更新画像 embedding（不阻塞响应；下一轮检索开始前完成即可）
+    from app.workers.embedding_tasks import update_profile_embedding
+    update_profile_embedding.delay(str(current_user.id), str(project_id))
+
     # 标记本轮完成
     await mark_round_complete(round_id, db)
-
-    # 异步触发反馈信号提取（不阻塞响应）
-    for fb_item in req.feedbacks:
-        if fb_item.reason:
-            from app.workers.search_tasks import celery_app
-            # Phase 2: 调用 extract_feedback_signals 任务
 
     # 决定下一步
     next_round_id = None

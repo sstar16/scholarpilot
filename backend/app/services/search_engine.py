@@ -26,6 +26,7 @@ async def execute_search(
     progress_callback=None,
     exclude_doc_keys: Optional[Set[str]] = None,
     scoring_weights: Optional[Dict[str, float]] = None,
+    profile_embedding: Optional[List[float]] = None,
 ) -> tuple[List[Dict], int, Dict[str, Dict]]:
     """
     执行单轮搜索（真正并行）
@@ -127,6 +128,7 @@ async def execute_search(
         exclude_terms=query_plan.exclude_terms,
         exclude_doc_keys=exclude_doc_keys,
         scoring_weights=scoring_weights,
+        profile_embedding=profile_embedding,
     )
 
     # 保底机制：若评分后 0 篇但有候选文档，放宽条件重试

@@ -79,6 +79,7 @@ services:
         condition: service_healthy
     environment:
       <<: *backend-env
+      HF_ENDPOINT: https://hf-mirror.com
     volumes:
       - ./backend/app:/app/app
       - ./data/pdfs:/app/data/pdfs

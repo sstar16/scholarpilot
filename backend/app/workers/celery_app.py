@@ -8,6 +8,7 @@ app = Celery(
     include=[
         "app.workers.search_tasks",
         "app.workers.monitor_tasks",
+        "app.workers.embedding_tasks",
     ],
 )
 
@@ -23,6 +24,7 @@ app.conf.update(
         "app.workers.search_tasks.*": {"queue": "default"},
         "app.workers.monitor_tasks.*": {"queue": "default"},
         "app.workers.fulltext_tasks.*": {"queue": "fulltext"},
+        "app.workers.embedding_tasks.*": {"queue": "default"},
     },
     beat_schedule={
         "daily-monitor": {

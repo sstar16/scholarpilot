@@ -1,12 +1,14 @@
 """
 用户偏好画像服务
-Phase 1: 基于关键词统计的偏好模型
+Phase 1: 基于关键词统计的偏好模型（jieba TF-IDF 中文 + 正则英文）
 Phase 2: 叠加 embedding 向量
 """
 import re
 from collections import Counter
 from typing import List, Optional, Dict
 from datetime import datetime, timezone
+import jieba
+import jieba.analyse
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -82,6 +84,11 @@ async def update_profile_from_feedbacks(
             for kw in keywords:
                 pos_kw_counter[kw] += weight
 
+            # ai_key_points：LLM 已提取的领域精准词，权重 ×3（质量远高于正则）
+            for point in (doc.get("ai_key_points") or []):
+                for kw in _extract_keywords(point):
+                    pos_kw_counter[kw] += weight * 3
+
             # 记录来源偏好
             if doc.get("source"):
                 source_counter[doc["source"]] += weight
@@ -124,12 +131,31 @@ async def update_profile_from_feedbacks(
 
 
 def _extract_keywords(text: str) -> List[str]:
-    """从文本提取有意义的关键词"""
+    """从文本提取有意义的关键词：中文用 jieba TF-IDF，英文用正则"""
     if not text:
         return []
-    # 中文词（2字以上）+ 英文词（4字以上）
-    words = re.findall(r'[\u4e00-\u9fff]{2,6}|[a-zA-Z]{4,20}', text)
-    return [w.lower() for w in words if w.lower() not in STOP_WORDS][:20]
+    results = []
+    seen = set()
+
+    # 中文段落：jieba TF-IDF，比正则切词更准确
+    cn_chunks = re.findall(r'[\u4e00-\u9fff，。、；：！？\s]+', text)
+    if cn_chunks:
+        cn_text = " ".join(cn_chunks)
+        cn_kws = jieba.analyse.extract_tags(cn_text, topK=10, withWeight=False)
+        for w in cn_kws:
+            if w not in STOP_WORDS and w not in seen:
+                results.append(w)
+                seen.add(w)
+
+    # 英文段落：支持连字符词（machine-learning），最少 3 字符
+    en_words = re.findall(r'\b[a-zA-Z]{2,}(?:-[a-zA-Z]+)*\b', text)
+    for w in en_words:
+        wl = w.lower()
+        if wl not in STOP_WORDS and len(wl) >= 3 and wl not in seen:
+            results.append(wl)
+            seen.add(wl)
+
+    return results[:20]
 
 
 async def get_profile_summary(profile: UserProfile) -> Dict:

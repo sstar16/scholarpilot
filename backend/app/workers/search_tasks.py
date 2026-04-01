@@ -104,6 +104,9 @@ async def _execute_round_async(round_id_str: str):
             profile = await get_or_create_profile(project.user_id, project.id, db)
             preferred_keywords = profile.preferred_keywords or []
             excluded_keywords = profile.excluded_keywords or []
+            # 画像向量（第2轮起生效；首轮反馈完成后由 embedding_tasks 异步生成）
+            # 用 getattr 避免 pgvector 未安装时 AttributeError
+            profile_embedding = getattr(profile, "positive_embedding", None) if round_.round_number > 1 else None
 
             query_plan = await build_query(
                 project_description=project.description,
@@ -143,6 +146,7 @@ async def _execute_round_async(round_id_str: str):
                 query_plan,
                 exclude_doc_keys=exclude_keys if exclude_keys else None,
                 scoring_weights=scoring_weights,
+                profile_embedding=profile_embedding,
             )
 
             # 5b. LLM Reranking（可选，通过 search_config.enable_llm_rerank 开关）

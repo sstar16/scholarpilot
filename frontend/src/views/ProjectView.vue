@@ -172,6 +172,18 @@
                             <span class="dev-k">每源上限</span>
                             <span class="dev-v">{{ currentRound.search_queries.max_per_source }} 篇</span>
                           </div>
+                          <div v-if="currentRound.search_queries.profile_keywords?.length" class="dev-kv">
+                            <span class="dev-k">画像注入词</span>
+                            <span class="dev-v dev-tags">
+                              <el-tag v-for="t in currentRound.search_queries.profile_keywords" :key="t" size="small" type="warning" effect="plain" class="dev-tag">{{ t }}</el-tag>
+                            </span>
+                          </div>
+                          <div v-if="currentRound.search_queries.profile_excluded?.length" class="dev-kv">
+                            <span class="dev-k">画像排除词</span>
+                            <span class="dev-v dev-tags">
+                              <el-tag v-for="t in currentRound.search_queries.profile_excluded" :key="t" size="small" type="danger" effect="plain" class="dev-tag">{{ t }}</el-tag>
+                            </span>
+                          </div>
                         </div>
                       </template>
                       <div v-else class="dev-no-data">本轮数据未记录，请重启 worker 后新开一轮</div>

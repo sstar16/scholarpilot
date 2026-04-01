@@ -99,10 +99,18 @@ async def _execute_round_async(round_id_str: str):
             if project.search_config and "scoring_weights" in project.search_config:
                 scoring_weights = project.search_config["scoring_weights"]
 
+            # 加载用户画像（第2轮起将 preferred_keywords 注入扩展词）
+            from app.services.profile_service import get_or_create_profile
+            profile = await get_or_create_profile(project.user_id, project.id, db)
+            preferred_keywords = profile.preferred_keywords or []
+            excluded_keywords = profile.excluded_keywords or []
+
             query_plan = await build_query(
                 project_description=project.description,
                 project_domain=project.domain,
                 round_number=round_.round_number,
+                preferred_keywords=preferred_keywords,
+                excluded_keywords=excluded_keywords,
                 llm_manager=llm_manager,
                 search_config=project.search_config,
                 project_domains=project.domains,
@@ -120,6 +128,8 @@ async def _execute_round_async(round_id_str: str):
                 "sources_selected": query_plan.sources,
                 "max_per_source": query_plan.max_results_per_source,
                 "original_chinese_query": query_plan.original_chinese_query,
+                "profile_keywords": preferred_keywords[:5] if round_.round_number > 1 else [],
+                "profile_excluded": excluded_keywords[:3] if round_.round_number > 1 else [],
             }
             await db.execute(
                 sql_update(SearchRound).where(SearchRound.id == round_id).values(

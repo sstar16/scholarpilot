@@ -66,6 +66,11 @@ class LLMSummarizer:
             content = abstract[:3000]
             content_label = "摘要"
             summary_source = "from_abstract"
+        elif title and len(title) > 10:
+            # 仅有标题，尝试基于标题生成简要描述
+            content = title
+            content_label = "标题"
+            summary_source = "from_title"
         else:
             # 无内容可用，直接返回 None
             return None, None, None, "not_generated"

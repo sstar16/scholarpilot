@@ -113,6 +113,24 @@ async def save_round_documents(
         )
         doc = result.scalar_one_or_none()
 
+        if doc:
+            # 已存在的文档：如果新数据有更完整的字段，更新之
+            updated = False
+            new_abstract = raw_doc.get("abstract")
+            if new_abstract and not doc.abstract:
+                doc.abstract = new_abstract
+                updated = True
+            new_doi = raw_doc.get("doi")
+            if new_doi and not doc.doi:
+                doc.doi = new_doi
+                updated = True
+            new_cite = raw_doc.get("citation_count", 0)
+            if new_cite and (doc.citation_count or 0) == 0:
+                doc.citation_count = new_cite
+                updated = True
+            if updated:
+                await db.flush()
+
         if not doc:
             pub_date = None
             raw_date = raw_doc.get("publication_date")

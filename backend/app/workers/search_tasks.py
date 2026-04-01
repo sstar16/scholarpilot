@@ -195,7 +195,7 @@ async def _execute_round_async(round_id_str: str):
             if agent_plan is not None:
                 EventBus.publish_sync(round_id_str, "agent_plan", {
                     "rationale": agent_plan.rationale[:200],
-                    "tools": agent_plan.selected_tools,
+                    "tools": agent_plan.tool_ids,
                     "year_range": f"{agent_plan.year_from}-{agent_plan.year_to}",
                 })
 

@@ -75,48 +75,23 @@
 
             <!-- Searching/summarizing state — real-time SSE powered -->
             <div v-if="isProcessing" class="processing-state-v2">
-              <div class="processing-header">
-                <el-progress
-                  :percentage="Math.round((currentRound?.progress ?? 0) * 100)"
-                  :stroke-width="8"
-                  :text-inside="true"
-                  style="flex:1"
-                />
-                <span class="processing-status">{{ currentRound?.progress_message || processingMessage }}</span>
-              </div>
+              <!-- Particle animation + status text -->
+              <SearchingAnimation
+                :status="currentRound?.status"
+                :message="currentRound?.progress_message"
+                :doc-count="searchStore.streamingDocs.length"
+                :summary-count="summaryReadyCount"
+                :current-source="currentSearchingSource"
+              />
 
               <!-- Agent plan (appears when agent planning is active) -->
               <AgentPlanView ref="agentPlanRef" />
 
-              <!-- Per-source progress (appears when sources start responding) -->
-              <SourceProgressBar ref="sourceProgressRef" />
+              <!-- Document stream (flowing cards) -->
+              <DocumentStream :docs="searchStore.streamingDocs" />
 
-              <!-- Streaming document arrivals -->
-              <div v-if="searchStore.streamingDocs.length > 0" class="streaming-docs">
-                <div class="streaming-header">
-                  <span>已到达 {{ searchStore.streamingDocs.length }} 篇文献</span>
-                  <span class="streaming-hint">摘要生成中...</span>
-                </div>
-                <TransitionGroup name="doc-list" tag="div" class="streaming-list">
-                  <div
-                    v-for="doc in searchStore.streamingDocs.slice(-8)"
-                    :key="doc.external_id + doc.source"
-                    class="streaming-doc-item"
-                  >
-                    <span class="streaming-dot" :class="doc.has_abstract ? 'dot-has' : 'dot-no'"></span>
-                    <el-tag size="small" effect="plain" style="flex-shrink:0">{{ doc.source }}</el-tag>
-                    <span class="streaming-doc-title">{{ doc.title }}</span>
-                  </div>
-                </TransitionGroup>
-              </div>
-
-              <!-- Skeleton placeholders when waiting for first docs -->
-              <div v-else-if="currentRound?.status === 'searching'" class="skeleton-placeholders">
-                <DocumentSkeleton />
-                <DocumentSkeleton />
-              </div>
-
-              <p class="processing-hint">实时推送中，无需刷新页面</p>
+              <!-- Compact source progress tags -->
+              <SourceProgressCompact ref="sourceProgressRef" />
             </div>
 
             <!-- Results + feedback -->
@@ -352,7 +327,7 @@
                             <el-icon class="expand-icon" :class="{ 'icon-open': llmAllOpen || expandedLlmDocs.has(String(doc.id)) }"><ArrowRight /></el-icon>
                             <el-tag size="small" effect="dark" style="flex-shrink:0;font-size:10px">{{ doc.source }}</el-tag>
                             <span class="dev-llm-doc-title">{{ doc.title }}</span>
-                            <span class="dev-llm-badge" :class="doc.ai_summary ? 'badge-ok' : 'badge-none'">{{ doc.ai_summary ? '✓ AI摘要' : '无摘要' }}</span>
+                            <span class="dev-llm-badge" :class="doc.ai_summary ? (doc.ai_summary_source === 'from_title' ? 'badge-title' : 'badge-ok') : 'badge-none'">{{ doc.ai_summary ? (doc.ai_summary_source === 'from_title' ? '⚠ 标题推断' : '✓ AI摘要') : '无摘要' }}</span>
                           </div>
                           <!-- 展开区：原文 → LLM输出 -->
                           <div v-if="llmAllOpen || expandedLlmDocs.has(String(doc.id))" class="dev-llm-detail">
@@ -468,9 +443,10 @@ import { useSearchStore } from '../stores/search'
 import { projectApi } from '../api/client'
 import RoundTimeline from '../components/RoundTimeline.vue'
 import DocumentCard from '../components/DocumentCard.vue'
-import DocumentSkeleton from '../components/document/DocumentSkeleton.vue'
-import SourceProgressBar from '../components/search/SourceProgressBar.vue'
+import SourceProgressCompact from '../components/search/SourceProgressCompact.vue'
 import AgentPlanView from '../components/pipeline/AgentPlanView.vue'
+import SearchingAnimation from '../components/search/SearchingAnimation.vue'
+import DocumentStream from '../components/search/DocumentStream.vue'
 import { useSSE } from '../composables/useSSE'
 
 const route = useRoute()
@@ -485,10 +461,14 @@ const expandedLlmDocs = reactive<Set<string>>(new Set())
 
 // SSE real-time streaming
 const sse = useSSE()
-const sourceProgressRef = ref<InstanceType<typeof SourceProgressBar> | null>(null)
+const sourceProgressRef = ref<InstanceType<typeof SourceProgressCompact> | null>(null)
 const agentPlanRef = ref<InstanceType<typeof AgentPlanView> | null>(null)
 
 function setupSSE(roundId: string) {
+  summaryReadyCount.value = 0
+  currentSearchingSource.value = ''
+  sourceProgressRef.value?.reset()
+  agentPlanRef.value?.reset()
   sse.on('round_status', (data: any) => searchStore.handleSSEEvent('round_status', data))
   sse.on('doc_arrived', (data: any) => searchStore.handleSSEEvent('doc_arrived', data))
   sse.on('summary_ready', (data: any) => searchStore.handleSSEEvent('summary_ready', data))
@@ -497,9 +477,16 @@ function setupSSE(roundId: string) {
     sse.disconnect()
   })
   sse.on('agent_plan', (data: any) => agentPlanRef.value?.setPlan(data))
-  sse.on('source_started', (data: any) => sourceProgressRef.value?.onSourceStarted(data))
-  sse.on('source_complete', (data: any) => sourceProgressRef.value?.onSourceComplete(data))
+  sse.on('source_started', (data: any) => {
+    sourceProgressRef.value?.onSourceStarted(data)
+    currentSearchingSource.value = data.source_id || ''
+  })
+  sse.on('source_complete', (data: any) => {
+    sourceProgressRef.value?.onSourceComplete(data)
+    currentSearchingSource.value = ''
+  })
   sse.on('source_error', (data: any) => sourceProgressRef.value?.onSourceError(data))
+  sse.on('summary_ready', () => { summaryReadyCount.value++ })
   sse.connect(roundId)
 }
 
@@ -612,6 +599,9 @@ const isProcessing = computed(() =>
   ['searching', 'summarizing'].includes(currentRound.value?.status ?? '')
 )
 
+const summaryReadyCount = ref(0)
+const currentSearchingSource = ref('')
+
 const processingMessage = computed(() => {
   if (currentRound.value?.status === 'searching') return '正在从多个数据库检索文献...'
   return '正在生成 AI 摘要，请稍候...'
@@ -710,114 +700,94 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.project-view { min-height: calc(100vh - 60px); background: #f5f7fa; }
+/* ═══════════════════════════════════════════════
+   ProjectView — Ink & Signal theme
+   ═══════════════════════════════════════════════ */
 
+.project-view {
+  min-height: calc(100vh - 52px);
+  background: var(--paper-cool);
+}
+
+/* ── Top Bar ── */
 .project-topbar {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 16px 24px; background: #fff; border-bottom: 1px solid #e4e7ed;
+  padding: 16px 24px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--ink-100);
 }
 .topbar-left { display: flex; align-items: center; gap: 12px; }
-.project-title { margin: 0; font-size: 18px; font-weight: 700; }
-.project-domain { font-size: 12px; color: #909399; }
+.project-title {
+  margin: 0; font-family: var(--font-display);
+  font-size: 19px; font-weight: 900; color: var(--ink-900);
+  letter-spacing: -0.3px;
+}
+.project-domain {
+  font-size: 11px; color: var(--ink-400);
+  background: var(--ink-50); padding: 2px 10px;
+  border-radius: var(--radius-full);
+}
 
+/* ── Layout ── */
 .project-body { display: flex; }
 
 .sidebar {
-  width: 220px; min-height: calc(100vh - 120px); background: #fff;
-  border-right: 1px solid #e4e7ed; flex-shrink: 0; padding-top: 8px;
-  position: sticky; top: 60px; align-self: flex-start;
+  width: 220px; min-height: calc(100vh - 110px);
+  background: var(--paper);
+  border-right: 1px solid var(--ink-100);
+  flex-shrink: 0;
+  position: sticky; top: 52px; align-self: flex-start;
 }
 
-.main-content { flex: 1; padding: 24px; max-width: 860px; }
+.main-content { flex: 1; padding: 24px 28px; max-width: 880px; }
 
 .start-panel { display: flex; justify-content: center; padding: 80px 0; }
 
+/* ── Round Header ── */
 .round-header {
-  display: flex; justify-content: space-between; align-items: flex-start;
-  margin-bottom: 20px;
-}
-.round-header h3 { margin: 0; font-size: 18px; }
-.round-desc { color: #909399; font-size: 13px; margin: 4px 0 0; }
-
-/* Old processing state (kept for fallback) */
-.processing-state {
-  display: flex; gap: 32px; align-items: center;
-  background: #fff; border-radius: 8px; padding: 40px;
-  justify-content: center;
-}
-.processing-text p { margin: 0; font-size: 15px; font-weight: 500; }
-.processing-hint { color: #909399; font-size: 13px; margin-top: 8px; text-align: center; }
-
-/* New SSE-powered processing state */
-.processing-state-v2 {
-  background: #fff; border-radius: 10px; padding: 24px;
-  border: 1px solid #e4e7ed; margin-bottom: 16px;
-}
-.processing-header {
-  display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
-}
-.processing-status {
-  font-size: 13px; color: #606266; white-space: nowrap; flex-shrink: 0;
-}
-
-/* Streaming doc list */
-.streaming-docs {
-  background: #f5f7fa; border-radius: 8px; padding: 12px 16px;
-  margin-top: 12px;
-}
-.streaming-header {
   display: flex; justify-content: space-between; align-items: center;
-  font-size: 14px; font-weight: 600; color: #303133; margin-bottom: 8px;
+  margin-bottom: 20px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--ink-100);
 }
-.streaming-hint { font-size: 12px; color: #909399; font-weight: 400; }
-.streaming-list { display: flex; flex-direction: column; gap: 6px; }
-.streaming-doc-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 10px; background: #fff; border-radius: 6px;
-  border: 1px solid #ebeef5; font-size: 13px;
-  animation: slideIn 0.3s ease-out;
+.round-header h3 {
+  margin: 0; font-family: var(--font-display);
+  font-size: 20px; font-weight: 900; color: var(--ink-900);
 }
-.streaming-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.dot-has { background: #67c23a; }
-.dot-no { background: #e6a23c; }
-.streaming-doc-title {
-  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: #606266;
-}
-.skeleton-placeholders { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.round-desc { color: var(--ink-400); font-size: 12px; margin: 3px 0 0; }
 
-/* TransitionGroup animations */
-.doc-list-enter-active { animation: slideIn 0.4s ease-out; }
-.doc-list-leave-active { animation: slideIn 0.3s ease-in reverse; }
-@keyframes slideIn {
-  from { opacity: 0; transform: translateX(20px); }
-  to { opacity: 1; transform: translateX(0); }
+/* ── Processing (SSE v2) ── */
+.processing-state-v2 {
+  background: var(--paper); border-radius: var(--radius-lg);
+  padding: 24px; border: 1px solid var(--ink-100);
+  margin-bottom: 18px; box-shadow: var(--shadow-xs);
 }
 
+/* ── Feedback Progress ── */
 .feedback-progress {
   display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 16px; padding: 12px 16px;
-  background: #fff; border-radius: 6px; border: 1px solid #e4e7ed;
-  font-size: 14px; color: #606266;
+  margin-bottom: 18px; padding: 12px 18px;
+  background: var(--signal-teal-bg); border-radius: var(--radius-md);
+  border: 1px solid rgba(13,148,136,0.15);
+  font-size: 13px; color: var(--signal-teal); font-weight: 600;
 }
 
-.doc-list { display: flex; flex-direction: column; gap: 16px; }
+.doc-list { display: flex; flex-direction: column; gap: 12px; }
 
+/* ── Source Stats ── */
 .source-stats {
   display: flex; flex-wrap: wrap; align-items: center;
-  margin-bottom: 12px; padding: 8px 12px;
-  background: #fff; border-radius: 6px; border: 1px solid #e4e7ed;
+  margin-bottom: 14px; padding: 8px 14px;
+  background: var(--paper); border-radius: var(--radius-md);
+  border: 1px solid var(--ink-100);
 }
-.source-stats-label {
-  font-size: 13px; color: #909399; margin-right: 8px; white-space: nowrap;
-}
+.source-stats-label { font-size: 12px; color: var(--ink-400); margin-right: 8px; white-space: nowrap; font-weight: 600; }
 
 .next-round-panel { margin-top: 24px; }
 
 .settings-source-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .settings-source-item { display: flex; align-items: center; gap: 8px; }
-.settings-source-label { font-size: 13px; font-weight: 500; display: block; }
-.settings-source-desc { font-size: 11px; color: #909399; display: block; }
+.settings-source-label { font-size: 13px; font-weight: 600; color: var(--ink-800); }
+.settings-source-desc { font-size: 11px; color: var(--ink-400); }
 
 /* ── Dev View Pipeline ── */
 .dev-pipeline {
@@ -983,6 +953,7 @@ onMounted(async () => {
 }
 .dev-llm-badge { font-size: 10px; white-space: nowrap; }
 .badge-ok { color: #3fb950; }
+.badge-title { color: #f59e0b; }
 .badge-none { color: #484f58; }
 
 .dev-llm-detail {

@@ -13,7 +13,10 @@ export const useSearchStore = defineStore('search', () => {
   const loading = ref(false)
   const pollingTimer = ref<ReturnType<typeof setInterval> | null>(null)
   const sseConnected = ref(false)
-  const streamingDocs = ref<any[]>([]) // docs arriving one-by-one via SSE
+  const streamingDocs = ref<any[]>([]) // visible docs (revealed gradually)
+  const docQueue: any[] = [] // internal buffer — backend pushes here, timer drains to streamingDocs
+  let drainTimer: ReturnType<typeof setInterval> | null = null
+  const statusText = ref('') // current status description
 
   const isStarting = computed(() => loading.value)
 
@@ -113,15 +116,36 @@ export const useSearchStore = defineStore('search', () => {
     return res.data
   }
 
+  function startDrainTimer() {
+    if (drainTimer) return
+    drainTimer = setInterval(() => {
+      if (docQueue.length > 0) {
+        streamingDocs.value.push(docQueue.shift()!)
+      } else {
+        // queue empty, stop timer
+        clearInterval(drainTimer!)
+        drainTimer = null
+      }
+    }, 350) // one doc every 350ms — smooth flowing reveal
+  }
+
+  function stopDrain() {
+    if (drainTimer) { clearInterval(drainTimer); drainTimer = null }
+    // flush remaining
+    while (docQueue.length) streamingDocs.value.push(docQueue.shift()!)
+  }
+
   function handleSSEEvent(event: string, data: any) {
     switch (event) {
       case 'round_status':
         if (currentRound.value) {
           currentRound.value = { ...currentRound.value, status: data.status, progress: data.progress, progress_message: data.message }
         }
+        statusText.value = data.message || ''
         break
       case 'doc_arrived':
-        streamingDocs.value.push(data)
+        docQueue.push(data) // buffer it
+        startDrainTimer()   // start draining if not already
         break
       case 'summary_ready': {
         // Update the matching doc with summary
@@ -133,10 +157,11 @@ export const useSearchStore = defineStore('search', () => {
         break
       }
       case 'round_complete':
+        stopDrain() // flush remaining docs immediately
+        statusText.value = '检索完成'
         if (currentRound.value) {
           currentRound.value = { ...currentRound.value, status: 'awaiting_feedback', progress: 1.0 }
         }
-        // Load full results to get complete data
         if (currentRound.value?.id) {
           loadRoundResults(currentRound.value.id)
         }
@@ -146,6 +171,8 @@ export const useSearchStore = defineStore('search', () => {
 
   function reset() {
     stopPolling()
+    stopDrain()
+    docQueue.length = 0
     projectId.value = ''
     currentRound.value = null
     rounds.value = []
@@ -153,13 +180,14 @@ export const useSearchStore = defineStore('search', () => {
     sourceStats.value = {}
     streamingDocs.value = []
     sseConnected.value = false
+    statusText.value = ''
     Object.keys(feedbackDrafts).forEach(k => delete feedbackDrafts[k])
   }
 
   return {
     currentRound, rounds, documents, sourceStats, feedbackDrafts, loading,
     isStarting, ratedCount,
-    sseConnected, streamingDocs, handleSSEEvent,
+    sseConnected, streamingDocs, statusText, handleSSEEvent,
     fetchRounds, startRound, loadRoundResults, setFeedback, submitFeedback, reset,
   }
 })

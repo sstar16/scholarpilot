@@ -51,6 +51,9 @@ class Document(Base):
     # 质量评分
     quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Scoring Agent 一句话总结（跨轮保留的规范版本）
+    one_line_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # 去重
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 

@@ -116,91 +116,113 @@ async def _execute_round_async(round_id_str: str):
             if project.search_config and "scoring_weights" in project.search_config:
                 scoring_weights = project.search_config["scoring_weights"]
 
-            # 加载用户画像（第2轮起将 preferred_keywords 注入扩展词）
+            # 加载用户画像 + 项目记忆
             from app.services.profile_service import get_or_create_profile
             profile = await get_or_create_profile(project.user_id, project.id, db)
             preferred_keywords = profile.preferred_keywords or []
             excluded_keywords = profile.excluded_keywords or []
-            # 画像向量（第2轮起生效；首轮反馈完成后由 embedding_tasks 异步生成）
-            # 用 getattr 避免 pgvector 未安装时 AttributeError
             profile_embedding = getattr(profile, "positive_embedding", None) if round_.round_number > 1 else None
 
-            # [Harness] Agent-driven search strategy (feature-flagged)
-            agent_plan = None
-            if settings.enable_agent_planning:
+            # 加载上轮统计（Agent 决策参考）
+            prev_stats = {}
+            if round_.round_number > 1:
+                from sqlalchemy import select as sa_select
+                prev_round_q = await db.execute(
+                    sa_select(SearchRound).where(
+                        SearchRound.project_id == project.id,
+                        SearchRound.round_number == round_.round_number - 1,
+                    )
+                )
+                prev_round = prev_round_q.scalar_one_or_none()
+                if prev_round and prev_round.source_stats:
+                    prev_stats = prev_round.source_stats
+
+            # ── Agent-First Query Planning ──
+            # 优先让 Agent 直接从 description + memory 生成完整 QueryPlan
+            # LLM 不可用时 fallback 到确定性 build_query()
+            query_plan = None
+            _plan_source = "fallback"
+
+            if settings.enable_scoring_agent:
                 try:
-                    from app.harness.agent_orchestrator import SearchStrategyAgent
+                    from app.harness.query_plan_agent import QueryPlanAgent
                     from app.harness.tool_registry import ToolRegistry
-                    agent = SearchStrategyAgent(redis_url=settings.redis_url)
                     registry = ToolRegistry.get_instance()
-
-                    # Get previous round source_stats for context
-                    prev_stats = {}
-                    if round_.round_number > 1:
-                        from sqlalchemy import select as sa_select
-                        prev_round_q = await db.execute(
-                            sa_select(SearchRound).where(
-                                SearchRound.project_id == project.id,
-                                SearchRound.round_number == round_.round_number - 1,
-                            )
-                        )
-                        prev_round = prev_round_q.scalar_one_or_none()
-                        if prev_round and prev_round.source_stats:
-                            prev_stats = prev_round.source_stats
-
                     from app.services.query_builder import get_max_rounds as _get_max_rounds
-                    agent_plan = await agent.plan_round(
+
+                    qp_agent = QueryPlanAgent(llm_manager=llm_manager)
+                    query_plan = await qp_agent.plan(
                         project_description=project.description,
+                        memory_text=profile.memory_text or "",
                         round_number=round_.round_number,
                         max_rounds=project.max_rounds or _get_max_rounds(project.search_config),
-                        profile_positive=preferred_keywords or [],
-                        profile_negative=excluded_keywords or [],
                         tool_reliability=registry.get_reliability_report(),
                         prev_source_stats=prev_stats,
-                        llm_manager=llm_manager,
                     )
+                    if query_plan:
+                        _plan_source = "agent"
                 except Exception as e:
-                    logger.warning("[Harness] Agent planning failed, using deterministic: %s", e)
-                    agent_plan = None
+                    logger.warning("[QueryPlanAgent] Agent 规划失败，回退到 build_query: %s", e)
+                    query_plan = None
 
-            # Build query plan (deterministic path, always runs for base_query/translation)
-            query_plan = await build_query(
-                project_description=project.description,
-                project_domain=project.domain,
-                round_number=round_.round_number,
-                preferred_keywords=preferred_keywords,
-                excluded_keywords=excluded_keywords,
-                llm_manager=llm_manager,
-                search_config=project.search_config,
-                project_domains=project.domains,
-                project_title=project.title,
-            )
-
-            # [Harness] If agent produced a plan, overlay it onto the deterministic QueryPlan
-            if agent_plan is not None:
-                query_plan = agent_plan.to_query_plan(
-                    base_query=query_plan.base_query,
-                    original_chinese_query=query_plan.original_chinese_query,
-                    english_query_source=query_plan.english_query_source,
-                    cn_query_source=query_plan.cn_query_source,
-                    expanded_terms=query_plan.expanded_terms,
-                    anchor_keywords=query_plan.anchor_keywords,
-                    profile_injected_en=query_plan.profile_injected_en,
-                    profile_injected_zh=query_plan.profile_injected_zh,
-                    profile_query_extension=query_plan.profile_query_extension,
-                    language_scope=query_plan.language_scope,
+            # Fallback: 确定性 build_query()（含 LLM 翻译 + 领域映射 + 画像注入）
+            if query_plan is None:
+                query_plan = await build_query(
+                    project_description=project.description,
+                    project_domain=project.domain,
+                    round_number=round_.round_number,
+                    preferred_keywords=preferred_keywords,
+                    excluded_keywords=excluded_keywords,
+                    llm_manager=llm_manager,
+                    search_config=project.search_config,
+                    project_domains=project.domains,
+                    project_title=project.title,
                 )
-                logger.info("[Harness] Agent plan applied: %s", agent_plan.rationale[:100])
 
-            # [SSE] 通知前端：Agent 规划结果
-            if agent_plan is not None:
-                EventBus.publish_sync(round_id_str, "agent_plan", {
-                    "rationale": agent_plan.rationale[:200],
-                    "tools": agent_plan.tool_ids,
-                    "year_range": f"{agent_plan.year_from}-{agent_plan.year_to}",
-                })
+                # 旧路径：如果旧 Agent Planning 也开启，叠加到确定性 plan 上
+                if settings.enable_agent_planning:
+                    try:
+                        from app.harness.agent_orchestrator import SearchStrategyAgent
+                        from app.harness.tool_registry import ToolRegistry
+                        registry = ToolRegistry.get_instance()
+                        agent = SearchStrategyAgent(redis_url=settings.redis_url)
+                        from app.services.query_builder import get_max_rounds as _get_max_rounds
+                        old_plan = await agent.plan_round(
+                            project_description=project.description,
+                            round_number=round_.round_number,
+                            max_rounds=project.max_rounds or _get_max_rounds(project.search_config),
+                            profile_positive=preferred_keywords,
+                            profile_negative=excluded_keywords,
+                            tool_reliability=registry.get_reliability_report(),
+                            prev_source_stats=prev_stats,
+                            llm_manager=llm_manager,
+                        )
+                        if old_plan:
+                            query_plan = old_plan.to_query_plan(
+                                base_query=query_plan.base_query,
+                                original_chinese_query=query_plan.original_chinese_query,
+                                english_query_source=query_plan.english_query_source,
+                                cn_query_source=query_plan.cn_query_source,
+                                expanded_terms=query_plan.expanded_terms,
+                                anchor_keywords=query_plan.anchor_keywords,
+                                profile_injected_en=query_plan.profile_injected_en,
+                                profile_injected_zh=query_plan.profile_injected_zh,
+                                profile_query_extension=query_plan.profile_query_extension,
+                                language_scope=query_plan.language_scope,
+                            )
+                            _plan_source = "legacy_agent"
+                    except Exception as e:
+                        logger.warning("[Harness] Legacy agent planning failed: %s", e)
 
-            # 4b. 将 QueryPlan 核心信息存入 search_queries（供 Dev View 使用）
+            # [SSE] 通知前端规划结果
+            EventBus.publish_sync(round_id_str, "agent_plan", {
+                "plan_source": _plan_source,
+                "base_query": query_plan.base_query[:100],
+                "sources": query_plan.sources,
+                "year_range": f"{query_plan.year_from}-{query_plan.year_to}",
+            })
+
+            # 4b. 将 QueryPlan 存入 search_queries（Dev View）
             from sqlalchemy import update as sql_update
             query_plan_info = {
                 "base_query": query_plan.base_query,
@@ -212,8 +234,8 @@ async def _execute_round_async(round_id_str: str):
                 "sources_selected": query_plan.sources,
                 "max_per_source": query_plan.max_results_per_source,
                 "original_chinese_query": query_plan.original_chinese_query,
-                "profile_keywords": preferred_keywords[:10] if round_.round_number > 1 else [],
-                "profile_excluded": excluded_keywords[:3] if round_.round_number > 1 else [],
+                "plan_source": _plan_source,
+                # 保留旧字段（兼容 DevView 前端）
                 "english_query_source": query_plan.english_query_source,
                 "cn_query_source": query_plan.cn_query_source,
                 "profile_injected_en": query_plan.profile_injected_en,
@@ -255,6 +277,25 @@ async def _execute_round_async(round_id_str: str):
                                         "[PerSourceKW] 使用用户确认的 %d 个源查询词",
                                         len(per_source_queries),
                                     )
+                                # 用户对 QueryPlan 的修改覆盖 Agent 方案
+                                if "base_query" in plan_data:
+                                    query_plan.base_query = plan_data["base_query"]
+                                    query_plan.expanded_terms = [
+                                        w for w in plan_data["base_query"].split() if len(w) >= 2
+                                    ]
+                                    logger.info("[UserOverride] base_query → %s", query_plan.base_query[:60])
+                                if "original_chinese_query" in plan_data:
+                                    query_plan.original_chinese_query = plan_data["original_chinese_query"]
+                                if "exclude_terms" in plan_data:
+                                    query_plan.exclude_terms = plan_data["exclude_terms"]
+                                if "year_from" in plan_data:
+                                    query_plan.year_from = plan_data["year_from"]
+                                if "year_to" in plan_data:
+                                    query_plan.year_to = plan_data["year_to"]
+                                if "max_per_source" in plan_data:
+                                    query_plan.max_results_per_source = plan_data["max_per_source"]
+                                if "language_scope" in plan_data:
+                                    query_plan.language_scope = plan_data["language_scope"]
                             # 加载动态同义词（LLM 生成的项目特定同义词表）
                             dynamic_synonyms = plan_data.get("synonyms")
                             if dynamic_synonyms:
@@ -304,6 +345,70 @@ async def _execute_round_async(round_id_str: str):
                     project_description=project.description,
                     llm_manager=llm_manager,
                 )
+
+            # 5c. Scoring Agent — LLM 逐篇评分（feature-flagged）
+            if selected_docs and settings.enable_scoring_agent:
+                try:
+                    from app.harness.scoring_agent import ScoringAgent
+
+                    # 触发 PRE_SCORING hook
+                    try:
+                        await _hooks.fire(HookPoint.PRE_SCORING, {
+                            "round_id": round_id_str,
+                            "doc_count": len(selected_docs),
+                        })
+                    except Exception as _he:
+                        logger.warning("[Harness] PRE_SCORING hook error: %s", _he)
+
+                    # 加载用户记忆（Memory Agent 写入的结构化记忆）
+                    _user_memory = ""
+                    if profile.memory_text:
+                        _user_memory = profile.memory_text
+
+                    # 获取斩杀线
+                    _cutoff = settings.scoring_cutoff_default
+                    if project.search_config and "scoring_cutoff" in project.search_config:
+                        _cutoff = float(project.search_config["scoring_cutoff"])
+
+                    EventBus.publish_sync(round_id_str, "round_status", {
+                        "status": "scoring", "progress": 0.45,
+                        "message": f"AI 正在评估 {len(selected_docs)} 篇文献相关性...",
+                    })
+
+                    scoring_agent = ScoringAgent(llm_manager=llm_manager)
+                    above_cutoff, below_cutoff = await scoring_agent.score_all(
+                        docs=selected_docs,
+                        project_description=project.description,
+                        cutoff=_cutoff,
+                        user_memory=_user_memory,
+                    )
+
+                    # 合并：above 在前，below 在后（都保存，但标记 below_cutoff）
+                    selected_docs = above_cutoff + below_cutoff
+
+                    # 触发 POST_SCORING hook
+                    try:
+                        await _hooks.fire(HookPoint.POST_SCORING, {
+                            "round_id": round_id_str,
+                            "above_cutoff": len(above_cutoff),
+                            "below_cutoff": len(below_cutoff),
+                            "cutoff": _cutoff,
+                        })
+                    except Exception as _he:
+                        logger.warning("[Harness] POST_SCORING hook error: %s", _he)
+
+                    EventBus.publish_sync(round_id_str, "scoring_complete", {
+                        "above_cutoff": len(above_cutoff),
+                        "below_cutoff": len(below_cutoff),
+                        "cutoff": _cutoff,
+                    })
+
+                    logger.info(
+                        "[ScoringAgent] Round %s: %d above / %d below cutoff (%.1f)",
+                        round_id_str[:8], len(above_cutoff), len(below_cutoff), _cutoff,
+                    )
+                except Exception as e:
+                    logger.warning("[ScoringAgent] 评分失败，使用传统分数: %s", e)
 
             # [SSE] 通知前端：检索完成
             EventBus.publish_sync(round_id_str, "round_status", {"status": "saving", "progress": 0.5, "message": f"检索完成，{len(selected_docs)}篇文献"})

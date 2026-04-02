@@ -27,7 +27,7 @@
                 <span class="provider-name">{{ p.display_name ?? p.provider_id }}</span>
                 <el-tag v-if="p.provider_id === activeProvider" type="success" size="small" style="margin-left:8px">使用中</el-tag>
                 <el-tag v-if="!p.configured" type="info" size="small" style="margin-left:4px">未配置</el-tag>
-                <span class="provider-model">{{ p.model ?? (p.configured ? '' : p.description) }}</span>
+                <span class="provider-model">{{ p.model ?? (p.configured ? '' : p.description) }}{{ p.max_tokens ? ` · ${p.max_tokens.toLocaleString()} tokens` : '' }}</span>
               </div>
               <div class="provider-actions">
                 <el-button size="small" text type="primary" :disabled="p.provider_id === activeProvider"
@@ -71,6 +71,16 @@
               </el-form-item>
             </el-col>
           </el-row>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="Max Tokens（最大输出长度）">
+                <el-input-number v-model="form.max_tokens" :min="500" :max="128000" :step="1000" style="width:100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <div class="token-hint">当前: {{ form.max_tokens?.toLocaleString() }} tokens · 建议 ≥ 4000（Agent 评分需要足够输出空间）</div>
+            </el-col>
+          </el-row>
           <el-button type="primary" native-type="submit" :loading="adding">保存提供商配置</el-button>
         </el-form>
       </template>
@@ -89,7 +99,7 @@ const testing = ref<string | null>(null)
 const providers = ref<any[]>([])
 const activeProvider = ref<string>('')
 
-const form = reactive({ provider_id: 'ollama', model: '', base_url: '', api_key: '' })
+const form = reactive({ provider_id: 'ollama', model: '', base_url: '', api_key: '', max_tokens: 10000 })
 
 onMounted(async () => {
   await loadProviders()
@@ -109,7 +119,7 @@ async function addProvider() {
     await llmApi.configureProvider(form)
     await loadProviders()
     ElMessage.success('配置已保存')
-    form.model = ''; form.api_key = ''; form.base_url = ''
+    form.model = ''; form.api_key = ''; form.base_url = ''; form.max_tokens = 10000
   } catch (e: any) {
     ElMessage.error(e.response?.data?.detail || '保存失败')
   } finally {
@@ -167,4 +177,5 @@ async function deleteProvider(id: string) {
 .provider-name { font-size: 14px; font-weight: 600; }
 .provider-model { display: block; font-size: 12px; color: #909399; margin-top: 2px; }
 .provider-actions { display: flex; gap: 4px; }
+.token-hint { font-size: 12px; color: #909399; margin-top: 30px; line-height: 1.5; }
 </style>

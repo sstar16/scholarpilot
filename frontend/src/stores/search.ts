@@ -98,10 +98,12 @@ export const useSearchStore = defineStore('search', () => {
     }
   }
 
-  async function confirmKeywords(pid: string, roundId: string, sourcePlans: any[]) {
+  async function confirmKeywords(pid: string, roundId: string, payload: any) {
     loading.value = true
     try {
-      const res = await searchApi.confirmKeywords(pid, roundId, sourcePlans)
+      // payload 可以是旧格式 (source_plans[]) 或新格式 ({source_plans, base_query, ...})
+      const body = Array.isArray(payload) ? { source_plans: payload } : payload
+      const res = await searchApi.confirmKeywords(pid, roundId, body)
       currentRound.value = res.data
       awaitingKeywordConfirmation.value = false
       keywordPlan.value = null

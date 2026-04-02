@@ -183,8 +183,17 @@ async def save_round_documents(
                 document_id=doc.id,
                 rank_in_round=rank,
                 initial_score=raw_doc.get("_relevance_score"),
+                agent_score=raw_doc.get("_agent_score"),
+                agent_rationale=raw_doc.get("_agent_rationale"),
+                one_line_summary=raw_doc.get("_one_line_summary"),
+                below_cutoff=raw_doc.get("_below_cutoff", False),
             )
             db.add(rd)
+
+            # 同步更新 Document 的规范一句话总结
+            one_line = raw_doc.get("_one_line_summary")
+            if one_line and not doc.one_line_summary:
+                doc.one_line_summary = one_line
 
     await db.commit()
 

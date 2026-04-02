@@ -20,6 +20,51 @@
       </div>
     </div>
 
+    <!-- QueryPlan 全局参数（Agent 生成，用户可修改） -->
+    <div class="plan-params">
+      <div class="plan-params-header">
+        <span class="param-badge">Agent</span>
+        <span class="param-title">检索方案</span>
+        <span v-if="keywordPlan?.plan_source" class="param-source">{{ keywordPlan.plan_source === 'agent' ? 'AI 规划' : '规则生成' }}</span>
+      </div>
+      <p v-if="keywordPlan?.plan_rationale" class="plan-rationale">{{ keywordPlan.plan_rationale }}</p>
+      <div class="param-grid">
+        <div class="param-item param-wide">
+          <label>英文查询词</label>
+          <textarea v-model="planParams.base_query" class="query-input" rows="2" spellcheck="false" />
+        </div>
+        <div class="param-item param-wide">
+          <label>中文查询词</label>
+          <textarea v-model="planParams.original_chinese_query" class="query-input" rows="1" spellcheck="false" placeholder="（中文项目自动生成）" />
+        </div>
+        <div class="param-item">
+          <label>起始年份</label>
+          <input v-model.number="planParams.year_from" type="number" class="query-input" min="1900" max="2030" />
+        </div>
+        <div class="param-item">
+          <label>截止年份</label>
+          <input v-model.number="planParams.year_to" type="number" class="query-input" min="1900" max="2030" />
+        </div>
+        <div class="param-item">
+          <label>每源上限</label>
+          <input v-model.number="planParams.max_per_source" type="number" class="query-input" min="5" max="200" />
+        </div>
+        <div class="param-item">
+          <label>语言范围</label>
+          <select v-model="planParams.language_scope" class="query-input">
+            <option value="chinese_first">中文优先</option>
+            <option value="international">国际</option>
+            <option value="global">全球</option>
+          </select>
+        </div>
+        <div class="param-item param-wide">
+          <label>排除词（逗号分隔）</label>
+          <input v-model="excludeTermsStr" class="query-input" placeholder="排除的关键词，逗号分隔" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Per-Source 查询词 -->
     <div class="source-grid">
       <div
         v-for="plan in localPlans"
@@ -81,7 +126,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 
 interface SourcePlan {
   source_id: string
@@ -100,18 +145,40 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  confirm: [plans: SourcePlan[]]
-  autoConfirm: [plans: SourcePlan[]]
+  confirm: [payload: any]
+  autoConfirm: [payload: any]
   cancel: []
 }>()
 
 const localPlans = ref<SourcePlan[]>([])
+const planParams = reactive({
+  base_query: '',
+  original_chinese_query: '',
+  year_from: null as number | null,
+  year_to: null as number | null,
+  max_per_source: 20,
+  language_scope: 'international',
+  exclude_terms: [] as string[],
+})
+const excludeTermsStr = computed({
+  get: () => planParams.exclude_terms.join(', '),
+  set: (v: string) => { planParams.exclude_terms = v.split(',').map(s => s.trim()).filter(Boolean) },
+})
 
 watch(
   () => props.keywordPlan,
   (plan) => {
     if (plan?.source_plans) {
       localPlans.value = plan.source_plans.map((p: any) => ({ ...p }))
+    }
+    if (plan) {
+      planParams.base_query = plan.base_query || ''
+      planParams.original_chinese_query = plan.original_chinese_query || ''
+      planParams.year_from = plan.year_from ?? null
+      planParams.year_to = plan.year_to ?? null
+      planParams.max_per_source = plan.max_per_source || 20
+      planParams.language_scope = plan.language_scope || 'international'
+      planParams.exclude_terms = plan.exclude_terms || []
     }
   },
   { immediate: true }
@@ -123,6 +190,15 @@ function resetToDefaults() {
   if (props.keywordPlan?.source_plans) {
     localPlans.value = props.keywordPlan.source_plans.map((p: any) => ({ ...p }))
   }
+  if (props.keywordPlan) {
+    planParams.base_query = props.keywordPlan.base_query || ''
+    planParams.original_chinese_query = props.keywordPlan.original_chinese_query || ''
+    planParams.year_from = props.keywordPlan.year_from ?? null
+    planParams.year_to = props.keywordPlan.year_to ?? null
+    planParams.max_per_source = props.keywordPlan.max_per_source || 20
+    planParams.language_scope = props.keywordPlan.language_scope || 'international'
+    planParams.exclude_terms = props.keywordPlan.exclude_terms || []
+  }
 }
 
 function updateDualPart(plan: SourcePlan, partIndex: number, value: string) {
@@ -131,20 +207,29 @@ function updateDualPart(plan: SourcePlan, partIndex: number, value: string) {
   plan.query = parts.join('|||')
 }
 
-function getPlansPayload() {
-  return localPlans.value.map(p => ({
-    source_id: p.source_id,
-    query: p.query,
-    enabled: p.enabled,
-  }))
+function getFullPayload() {
+  return {
+    source_plans: localPlans.value.map(p => ({
+      source_id: p.source_id,
+      query: p.query,
+      enabled: p.enabled,
+    })),
+    base_query: planParams.base_query,
+    original_chinese_query: planParams.original_chinese_query || null,
+    exclude_terms: planParams.exclude_terms,
+    year_from: planParams.year_from,
+    year_to: planParams.year_to,
+    max_per_source: planParams.max_per_source,
+    language_scope: planParams.language_scope,
+  }
 }
 
 function handleConfirm() {
-  emit('confirm', getPlansPayload() as any)
+  emit('confirm', getFullPayload() as any)
 }
 
 function handleAutoConfirm() {
-  emit('autoConfirm', getPlansPayload() as any)
+  emit('autoConfirm', getFullPayload() as any)
 }
 </script>
 
@@ -258,6 +343,40 @@ function handleAutoConfirm() {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ── QueryPlan 全局参数区 ── */
+.plan-params {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(13, 148, 136, 0.2);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.plan-params-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+}
+.param-badge {
+  background: linear-gradient(135deg, #0d9488, #14b8a6);
+  color: #fff; font-size: 10px; font-weight: 800;
+  padding: 2px 8px; border-radius: 10px;
+}
+.param-title { font-size: 14px; font-weight: 600; color: #e2e8f0; }
+.param-source { font-size: 11px; color: #64748b; }
+.plan-rationale {
+  font-size: 12px; color: #94a3b8; margin: 0 0 10px; font-style: italic;
+}
+.param-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.param-item label {
+  display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px; font-weight: 500;
+}
+.param-item select.query-input {
+  appearance: auto; cursor: pointer;
+}
+.param-wide { grid-column: span 4; }
 
 .source-grid {
   display: grid;

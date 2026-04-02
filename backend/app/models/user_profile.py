@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Integer, DateTime, ForeignKey, UniqueConstraint, ARRAY, String
+from sqlalchemy import Integer, Text, DateTime, ForeignKey, UniqueConstraint, ARRAY, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -29,6 +29,10 @@ class UserProfile(Base):
 
     feedback_count: Mapped[int] = mapped_column(Integer, default=0)
     last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Memory Agent: LLM-driven structured memory (replaces keyword-only profile)
+    memory_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    memory_version: Mapped[int] = mapped_column(Integer, default=0)
 
     project: Mapped["Project"] = relationship("Project", back_populates="user_profile")
 

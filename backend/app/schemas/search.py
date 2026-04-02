@@ -47,6 +47,11 @@ class DocumentOut(BaseModel):
     # 本轮打分
     rank_in_round: Optional[int] = None
     initial_score: Optional[float] = None
+    # Scoring Agent 评分
+    agent_score: Optional[float] = None       # 0-10 LLM 评分
+    agent_rationale: Optional[str] = None     # 评分理由
+    one_line_summary: Optional[str] = None    # 一句话总结
+    below_cutoff: bool = False                # 是否在斩杀线以下
     # 反馈状态
     user_feedback: Optional[int] = None  # -1/0/1/2 或 None
 

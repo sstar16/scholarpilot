@@ -424,15 +424,28 @@
                 </el-button>
               </div>
 
+              <!-- Cutoff slider (only when agent scores exist) -->
+              <template v-if="hasAgentScores">
+                <CutoffSlider v-model="scoringCutoff" :documents="searchStore.documents" />
+                <div v-if="filteredDocuments.length < searchStore.documents.length" class="cutoff-toggle">
+                  <el-button text size="small" @click="showBelowCutoff = !showBelowCutoff">
+                    {{ showBelowCutoff ? '隐藏淘汰文献' : `显示全部 (含 ${searchStore.documents.length - filteredDocuments.length} 篇淘汰)` }}
+                  </el-button>
+                </div>
+              </template>
+
               <!-- Document cards -->
               <div class="doc-list">
                 <DocumentCard
-                  v-for="doc in searchStore.documents"
+                  v-for="doc in filteredDocuments"
                   :key="String(doc.id)"
                   :doc="doc"
                   :initial-feedback="searchStore.feedbackDrafts[String(doc.id)] ?? doc.user_feedback"
                   :round-status="searchStore.currentRound?.status"
+                  :deep-dive-result="deepDiveResults[String(doc.id)]"
+                  :dd-loading="deepDiveLoading[String(doc.id)]"
                   @feedback="(val) => searchStore.setFeedback(String(doc.id), val)"
+                  @deep-dive="triggerDeepDive(String(doc.id))"
                 />
               </div>
 
@@ -464,7 +477,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useProjectStore } from '../stores/project'
 import { useSearchStore } from '../stores/search'
-import { projectApi } from '../api/client'
+import { projectApi, searchApi } from '../api/client'
 import RoundTimeline from '../components/RoundTimeline.vue'
 import DocumentCard from '../components/DocumentCard.vue'
 import SourceProgressCompact from '../components/search/SourceProgressCompact.vue'
@@ -472,6 +485,7 @@ import AgentPlanView from '../components/pipeline/AgentPlanView.vue'
 import SearchingAnimation from '../components/search/SearchingAnimation.vue'
 import DocumentStream from '../components/search/DocumentStream.vue'
 import KeywordConfirmPanel from '../components/search/KeywordConfirmPanel.vue'
+import CutoffSlider from '../components/search/CutoffSlider.vue'
 import { useSSE } from '../composables/useSSE'
 
 const route = useRoute()
@@ -479,6 +493,32 @@ const router = useRouter()
 const projectStore = useProjectStore()
 const searchStore = useSearchStore()
 const submitting = ref(false)
+const scoringCutoff = ref(7.0)
+const showBelowCutoff = ref(false)
+const deepDiveResults = reactive<Record<string, any>>({})
+const deepDiveLoading = reactive<Record<string, boolean>>({})
+
+async function triggerDeepDive(docId: string) {
+  if (deepDiveLoading[docId]) return
+  deepDiveLoading[docId] = true
+  try {
+    const pid = String(project.value?.id || projectStore.currentProject?.id)
+    await searchApi.triggerDeepDive(pid, docId)
+    // 轮询结果（最多 60 秒）
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000))
+      const res = await searchApi.getDeepDiveResult(pid, docId)
+      if (res.data?.status === 'completed' && res.data.analysis) {
+        deepDiveResults[docId] = res.data.analysis
+        break
+      }
+    }
+  } catch (e: any) {
+    ElMessage.error('深度分析失败: ' + (e.response?.data?.detail || e.message))
+  } finally {
+    deepDiveLoading[docId] = false
+  }
+}
 const devViewOpen = ref(false)
 const llmAllOpen = ref(false)
 const expandedSources = reactive<Set<string>>(new Set())
@@ -686,6 +726,14 @@ const minRequired = computed(() => {
   return total <= 3 ? total : 3
 })
 
+// Scoring Agent: 是否有 agent 评分的文档
+const hasAgentScores = computed(() => searchStore.documents.some((d: any) => d.agent_score != null))
+// 根据斩杀线过滤文档
+const filteredDocuments = computed(() => {
+  if (!hasAgentScores.value || showBelowCutoff.value) return searchStore.documents
+  return searchStore.documents.filter((d: any) => d.agent_score == null || d.agent_score >= scoringCutoff.value)
+})
+
 const minRatingHint = computed(() => {
   const total = searchStore.documents.length
   return total <= 3 ? `共${total}篇，请全部评分` : '至少完成3篇'
@@ -751,12 +799,13 @@ async function startRound() {
   }
 }
 
-async function onKeywordsConfirmed(plans: any[]) {
+async function onKeywordsConfirmed(payload: any) {
   const pid = route.params.id as string
   const roundId = searchStore.currentRound?.id
   if (!roundId) return
   try {
-    await searchStore.confirmKeywords(pid, roundId, plans)
+    // payload 现在包含 source_plans + QueryPlan 参数
+    await searchStore.confirmKeywords(pid, roundId, payload)
     await projectStore.fetchProject(pid)
     setupSSE(roundId)
   } catch (e: any) {
@@ -931,6 +980,7 @@ onMounted(async () => {
 }
 
 .doc-list { display: flex; flex-direction: column; gap: 12px; }
+.cutoff-toggle { text-align: center; margin-bottom: 8px; }
 
 /* ── Source Stats ── */
 .source-stats {

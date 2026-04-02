@@ -50,10 +50,8 @@ export const searchApi = {
     api.post(`/api/projects/${projectId}/rounds/start`),
   prepareRound: (projectId: string) =>
     api.post(`/api/projects/${projectId}/rounds/prepare`),
-  confirmKeywords: (projectId: string, roundId: string, sourcePlans: any[]) =>
-    api.post(`/api/projects/${projectId}/rounds/${roundId}/confirm-keywords`, {
-      source_plans: sourcePlans,
-    }),
+  confirmKeywords: (projectId: string, roundId: string, body: any) =>
+    api.post(`/api/projects/${projectId}/rounds/${roundId}/confirm-keywords`, body),
   getKeywordPlan: (projectId: string, roundId: string) =>
     api.get(`/api/projects/${projectId}/rounds/${roundId}/keyword-plan`),
   getRoundStatus: (projectId: string, roundId: string) =>
@@ -62,6 +60,14 @@ export const searchApi = {
     api.get(`/api/projects/${projectId}/rounds/${roundId}/results`),
   listRounds: (projectId: string) =>
     api.get(`/api/projects/${projectId}/rounds`),
+  // Deep Dive
+  triggerDeepDive: (projectId: string, documentId: string) =>
+    api.post(`/api/projects/${projectId}/documents/${documentId}/deep-dive`),
+  getDeepDiveResult: (projectId: string, documentId: string) =>
+    api.get(`/api/projects/${projectId}/documents/${documentId}/deep-dive`),
+  // Scoring config
+  updateScoringConfig: (projectId: string, config: any) =>
+    api.patch(`/api/projects/${projectId}/scoring-config`, config),
 }
 
 export const feedbackApi = {

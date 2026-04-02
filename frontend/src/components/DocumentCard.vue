@@ -1,14 +1,21 @@
 <template>
-  <div class="doc-card" :class="{ rated: localFeedback !== null, [`fb-${localFeedback}`]: localFeedback !== null }">
+  <div class="doc-card" :class="{
+    rated: localFeedback !== null,
+    [`fb-${localFeedback}`]: localFeedback !== null,
+    'below-cutoff': doc.below_cutoff,
+  }">
     <!-- Journal binding accent -->
     <div class="binding" :class="docType.accent"></div>
 
     <div class="card-inner">
-      <!-- Row 1: Badges + date -->
+      <!-- Row 1: Badges + date + AI score -->
       <div class="meta-row">
         <div class="badges">
           <span class="badge" :class="docType.accent">{{ docType.label }}</span>
           <span class="badge badge-outline">{{ doc.source }}</span>
+          <span v-if="doc.agent_score != null" class="badge badge-score" :class="scoreClass">
+            AI {{ doc.agent_score.toFixed(1) }}
+          </span>
         </div>
         <div class="meta-right">
           <span v-if="doc.publication_date" class="date">{{ formatDate(doc.publication_date) }}</span>
@@ -17,6 +24,9 @@
           </transition>
         </div>
       </div>
+
+      <!-- One-line summary (above title) -->
+      <p v-if="doc.one_line_summary" class="one-liner">{{ doc.one_line_summary }}</p>
 
       <!-- Title -->
       <h3 class="title">
@@ -43,6 +53,7 @@
             <span v-for="(pt, i) in doc.ai_key_points" :key="i" class="kp">{{ pt }}</span>
           </div>
           <p v-if="doc.ai_relevance_reason" class="relevance">{{ doc.ai_relevance_reason }}</p>
+          <p v-if="doc.agent_rationale" class="agent-rationale">AI 评分理由: {{ doc.agent_rationale }}</p>
         </template>
         <div v-else-if="!roundDone" class="generating">
           <span class="dot-pulse"><span/><span/><span/></span>
@@ -51,7 +62,26 @@
       </div>
       <p v-else-if="roundDone" class="no-summary">暂无摘要信息</p>
 
-      <!-- Feedback -->
+      <!-- Deep Dive panel (expandable) -->
+      <div v-if="deepDiveResult" class="deep-dive-panel">
+        <div class="dd-head" @click="ddExpanded = !ddExpanded">
+          <span class="dd-badge">Deep Dive</span>
+          <span class="dd-source">{{ deepDiveResult.content_source === 'pdf_fulltext' ? '全文分析' : deepDiveResult.content_source === 'abstract_only' ? '摘要分析' : '分析完成' }}</span>
+          <span class="btn-expand">{{ ddExpanded ? '收起' : '展开' }}</span>
+        </div>
+        <div v-if="ddExpanded" class="dd-body">
+          <p>{{ deepDiveResult.detailed_analysis }}</p>
+          <div v-if="deepDiveResult.key_findings?.length" class="dd-section">
+            <strong>核心发现：</strong>
+            <ul><li v-for="(f, i) in deepDiveResult.key_findings" :key="i">{{ f }}</li></ul>
+          </div>
+          <p v-if="deepDiveResult.relevance_to_project" class="dd-relevance">
+            <strong>与项目关联：</strong>{{ deepDiveResult.relevance_to_project }}
+          </p>
+        </div>
+      </div>
+
+      <!-- Feedback + Deep Dive button -->
       <div class="feedback-bar">
         <span class="fb-label">相关度</span>
         <div class="pills">
@@ -59,6 +89,15 @@
             {{ o.label }}
           </button>
         </div>
+        <button
+          v-if="showDeepDive && !deepDiveResult"
+          class="pill pill-dd"
+          :class="{ loading: ddLoading }"
+          :disabled="ddLoading"
+          @click="$emit('deep-dive')"
+        >
+          {{ ddLoading ? '分析中...' : '深度阅读' }}
+        </button>
       </div>
     </div>
   </div>
@@ -66,11 +105,25 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-const props = defineProps<{ doc: any; initialFeedback?: number | null; roundStatus?: string }>()
-const emit = defineEmits<{ (e: 'feedback', v: number): void }>()
+const props = defineProps<{
+  doc: any
+  initialFeedback?: number | null
+  roundStatus?: string
+  deepDiveResult?: any
+  ddLoading?: boolean
+}>()
+const emit = defineEmits<{
+  (e: 'feedback', v: number): void
+  (e: 'deep-dive'): void
+}>()
 const roundDone = computed(() => ['awaiting_feedback', 'completed'].includes(props.roundStatus ?? ''))
 const expanded = ref(false)
+const ddExpanded = ref(false)
 const localFeedback = ref<number | null>(props.initialFeedback ?? null)
+const showDeepDive = computed(() => {
+  const s = props.doc.agent_score
+  return (s != null && s >= 7.0) || localFeedback.value === 2
+})
 watch(() => props.initialFeedback, v => { localFeedback.value = v ?? null })
 
 const opts = [
@@ -93,6 +146,14 @@ const fbMap: Record<number, { label: string; cls: string }> = {
   [1]: { label: '相关', cls: 'ft-pos' }, [2]: { label: '很相关', cls: 'ft-top' },
 }
 const feedbackTag = computed(() => localFeedback.value !== null ? fbMap[localFeedback.value] ?? { label: '', cls: '' } : { label: '', cls: '' })
+const scoreClass = computed(() => {
+  const s = props.doc.agent_score
+  if (s == null) return ''
+  if (s >= 9) return 'score-top'
+  if (s >= 7) return 'score-high'
+  if (s >= 5) return 'score-mid'
+  return 'score-low'
+})
 function formatDate(d: string) { return d ? d.slice(0, 7) : '' }
 function formatAuthors(a: any) {
   if (Array.isArray(a)) { const n = a.slice(0,3).map((x:any) => x.name||x).join(', '); return a.length > 3 ? n+` 等${a.length}人` : n }
@@ -117,6 +178,7 @@ function formatAuthors(a: any) {
 }
 .doc-card.fb--1 { opacity: 0.55; }
 .doc-card.fb-2 { box-shadow: var(--shadow-glow-teal); border-color: rgba(13,148,136,0.25); }
+.doc-card.below-cutoff { opacity: 0.45; border-style: dashed; }
 
 /* ── Binding (left accent bar — like a journal spine) ── */
 .binding { width: 4px; flex-shrink: 0; transition: width var(--duration-fast); }
@@ -210,6 +272,54 @@ function formatAuthors(a: any) {
   line-height: 1.5;
 }
 .no-summary { font-size: 13px; color: var(--ink-300); font-style: italic; margin: 0 0 12px; }
+
+/* ── Agent score badge ── */
+.badge-score { font-weight: 800; letter-spacing: 0; }
+.score-top { background: var(--signal-teal); color: #fff; }
+.score-high { background: #2563eb; color: #fff; }
+.score-mid { background: #d97706; color: #fff; }
+.score-low { background: var(--ink-300); color: #fff; }
+
+/* ── One-line summary ── */
+.one-liner {
+  font-size: 13px; font-weight: 600; color: var(--signal-teal);
+  margin: 0 0 4px; line-height: 1.5;
+  padding: 4px 10px; border-radius: var(--radius-sm);
+  background: var(--signal-teal-bg);
+}
+
+/* ── Agent rationale ── */
+.agent-rationale {
+  font-size: 12px; color: var(--ink-500); margin: 6px 0 0;
+  font-style: italic;
+}
+
+/* ── Deep Dive panel ── */
+.deep-dive-panel {
+  background: linear-gradient(135deg, rgba(13,148,136,0.05), rgba(37,99,235,0.05));
+  border: 1px solid rgba(13,148,136,0.2);
+  border-radius: var(--radius-md); padding: 12px 16px; margin-bottom: 12px;
+}
+.dd-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.dd-badge {
+  font-size: 10px; font-weight: 800; padding: 2px 8px;
+  border-radius: var(--radius-full); background: var(--signal-teal); color: #fff;
+}
+.dd-source { font-size: 11px; color: var(--ink-400); }
+.dd-body { margin-top: 10px; font-size: 13px; line-height: 1.8; color: var(--ink-700); }
+.dd-body ul { margin: 4px 0; padding-left: 20px; }
+.dd-body li { margin: 2px 0; }
+.dd-section { margin-top: 8px; }
+.dd-relevance { margin-top: 8px; color: var(--signal-teal); }
+
+/* ── Deep Dive button ── */
+.pill-dd {
+  margin-left: auto;
+  background: var(--signal-teal-bg); border-color: rgba(13,148,136,0.3);
+  color: var(--signal-teal); font-weight: 600;
+}
+.pill-dd:hover { background: rgba(13,148,136,0.15); }
+.pill-dd.loading { opacity: 0.6; cursor: wait; }
 
 /* Generating dots */
 .generating { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--signal-teal); }

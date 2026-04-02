@@ -92,7 +92,7 @@ class OllamaProvider(BaseLLMProvider):
 
 
 class OpenAICompatibleProvider(BaseLLMProvider):
-    """OpenAI兼容API提供商（支持OpenAI、DeepSeek、Moonshot等）"""
+    """OpenAI兼容API提供商（支持OpenAI、DeepSeek、Moonshot、jiekou.ai等）"""
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -100,6 +100,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         self.base_url = config.get("base_url", "https://api.openai.com/v1")
         self.model = config.get("model", "gpt-4o-mini")
         self._provider_name = config.get("provider_name", "openai")
+        self.max_tokens = config.get("max_tokens", 10000)
 
     @property
     def provider_name(self) -> str:
@@ -120,11 +121,10 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                     json={
                         "model": self.model,
                         "messages": [
-                            {"role": "system", "content": "You are a biomedical query parser. Return only valid JSON."},
                             {"role": "user", "content": prompt}
                         ],
                         "temperature": temperature,
-                        "max_tokens": 500
+                        "max_tokens": self.max_tokens,
                     }
                 )
                 if response.status_code == 200:
@@ -322,6 +322,27 @@ class LLMProviderManager:
                 "provider_name": "moonshot"
             }
         },
+        "jiekou": {
+            "class": "OpenAICompatibleProvider",
+            "display_name": "Jiekou.ai 中转",
+            "description": "jiekou.ai API中转，支持 Claude/GPT/Gemini 等多种模型",
+            "requires_api_key": True,
+            "default_models": [
+                "claude-sonnet-4-20250514",
+                "claude-sonnet-4-6",
+                "claude-opus-4-6",
+                "gpt-5.4-mini",
+                "gemini-3.1-pro-preview",
+                "deepseek/deepseek-v3.1",
+            ],
+            "default_config": {
+                "base_url": "https://api.jiekou.ai/openai",
+                "model": "claude-sonnet-4-20250514",
+                "provider_name": "jiekou",
+                "max_tokens": 4000,
+                "timeout": 120.0,
+            }
+        },
         "custom": {
             "class": "OpenAICompatibleProvider",
             "display_name": "自定义API",
@@ -452,10 +473,12 @@ class LLMProviderManager:
         """获取所有可用的提供商模板信息"""
         result = []
         for pid, template in self.PROVIDER_TEMPLATES.items():
-            # 若该提供商已配置，取实际使用的 model
+            # 若该提供商已配置，取实际使用的 model 和 max_tokens
             model = None
+            max_tokens = None
             if pid in self.providers:
                 model = getattr(self.providers[pid], "model", None)
+                max_tokens = getattr(self.providers[pid], "max_tokens", None)
             info = {
                 "provider_id": pid,               # 前端使用 p.provider_id
                 "display_name": template["display_name"],
@@ -463,6 +486,7 @@ class LLMProviderManager:
                 "requires_api_key": template["requires_api_key"],
                 "default_models": template["default_models"],
                 "model": model,                   # 已配置时显示当前模型名
+                "max_tokens": max_tokens,         # 已配置时显示当前 max_tokens
                 "configured": pid in self.providers,
                 "active": pid == self.active_provider_id,
             }
@@ -485,7 +509,7 @@ class LLMProviderManager:
         providers_data = {}
         for pid, provider in self.providers.items():
             p_data = {}
-            for attr in ("model", "api_key", "base_url", "host"):
+            for attr in ("model", "api_key", "base_url", "host", "max_tokens"):
                 val = getattr(provider, attr, None)
                 if val:
                     p_data[attr] = val

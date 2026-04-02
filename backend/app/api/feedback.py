@@ -140,9 +140,48 @@ async def submit_feedback(
     except Exception as _he:
         logger.warning("[Harness] hook error: %s", _he)
 
-    # 更新用户画像
+    # 更新用户画像（关键词频率方式）
     if feedback_dicts:
         await update_profile_from_feedbacks(current_user.id, project_id, feedback_dicts, db)
+
+    # [Harness] Memory Agent — LLM 驱动的记忆更新（与关键词方式并行，互为冗余）
+    from app.config import settings as _cfg
+    if feedback_dicts and _cfg.enable_scoring_agent:
+        try:
+            from app.harness.memory_agent import run_memory_update
+            from app.services.core.llm_providers import LLMProviderManager
+            from app.services.core.llm_config_store import load_llm_config
+
+            _llm_mem = LLMProviderManager(default_ollama_host=_cfg.ollama_host)
+            await load_llm_config(_llm_mem, _cfg.redis_url)
+
+            # 丰富 feedback_dicts 以包含 one_line_summary
+            for fd in feedback_dicts:
+                doc_obj = fd.get("document", {})
+                doc_id = fd.get("document_id")
+                if doc_id:
+                    rd_q = await db.execute(
+                        select(RoundDocument).where(
+                            RoundDocument.round_id == round_id,
+                            RoundDocument.document_id == doc_id,
+                        )
+                    )
+                    rd_obj = rd_q.scalar_one_or_none()
+                    if rd_obj:
+                        fd["one_line_summary"] = rd_obj.one_line_summary or ""
+                fd["title"] = doc_obj.get("title", "")
+                fd["source"] = doc_obj.get("source", "")
+
+            await run_memory_update(
+                user_id=current_user.id,
+                project_id=project_id,
+                project_description=project.description,
+                feedback_dicts=feedback_dicts,
+                llm_manager=_llm_mem,
+                db=db,
+            )
+        except Exception as e:
+            logger.warning("[MemoryAgent] 记忆更新失败（不影响主流程）: %s", e)
 
     # 异步更新画像 embedding（不阻塞响应；下一轮检索开始前完成即可）
     from app.workers.embedding_tasks import update_profile_embedding

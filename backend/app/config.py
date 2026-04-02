@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     max_autonomous_rounds: int = 15           # Safety cap for autonomous mode
     enable_per_source_keywords: bool = True   # Per-source keyword optimization + confirmation UI
 
+    # Scoring Agent
+    enable_scoring_agent: bool = True         # LLM-based per-doc scoring (replaces hardcoded formula)
+    scoring_cutoff_default: float = 7.0       # Default cutoff line (0-10)
+    scoring_agent_provider: str = ""          # Empty = use user's default LLM provider
+
     # 应用
     debug: bool = False
     app_name: str = "URIP - 科研情报平台"

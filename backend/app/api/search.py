@@ -140,6 +140,10 @@ async def get_round_results(
             quality_score=doc.quality_score,
             rank_in_round=rd.rank_in_round,
             initial_score=rd.initial_score,
+            agent_score=rd.agent_score,
+            agent_rationale=rd.agent_rationale,
+            one_line_summary=rd.one_line_summary or doc.one_line_summary,
+            below_cutoff=rd.below_cutoff or False,
             user_feedback=feedbacks.get(doc.id),
         ))
 
@@ -210,8 +214,8 @@ async def prepare_round(
         round_ = await create_next_round(project, db)
         await db.commit()
 
-    # 构建基础查询
-    from app.services.query_builder import build_query
+    # 构建查询计划（Agent-First）
+    from app.services.query_builder import build_query, get_max_rounds
     from app.services.core.llm_providers import LLMProviderManager
     from app.services.core.llm_config_store import load_llm_config
     from app.models.user_profile import UserProfile
@@ -219,29 +223,77 @@ async def prepare_round(
     llm_manager = LLMProviderManager(default_ollama_host=settings.ollama_host)
     await load_llm_config(llm_manager, settings.redis_url)
 
-    # 加载用户画像
+    # 加载用户画像 + 项目记忆
     profile_result = await db.execute(
         select(UserProfile).where(UserProfile.project_id == project_id)
     )
     profile = profile_result.scalar_one_or_none()
-    preferred_kw = profile.preferred_keywords if profile else []
-    excluded_kw = profile.excluded_keywords if profile else []
+    memory_text = profile.memory_text if profile else ""
 
-    query_plan = await build_query(
-        project_description=project.description,
-        project_domain=project.domain or "",
-        round_number=round_.round_number,
-        preferred_keywords=preferred_kw,
-        excluded_keywords=excluded_kw,
-        preferred_sources=project.search_config.get("preferred_sources") if project.search_config else None,
-        llm_manager=llm_manager,
-        search_config=project.search_config,
-        project_domains=project.domains,
-        project_title=project.title,
-    )
+    # Agent-First: 让 QueryPlanAgent 生成完整方案
+    query_plan = None
+    _plan_source = "fallback"
+    _plan_rationale = ""
 
-    # 生成 per-source 关键词方案
+    if settings.enable_scoring_agent:
+        try:
+            from app.harness.query_plan_agent import QueryPlanAgent
+            from app.harness.tool_registry import ToolRegistry
+            registry = ToolRegistry.get_instance()
+
+            prev_stats = {}
+            if round_.round_number > 1:
+                prev_q = await db.execute(
+                    select(SearchRound).where(
+                        SearchRound.project_id == project_id,
+                        SearchRound.round_number == round_.round_number - 1,
+                    )
+                )
+                prev_r = prev_q.scalar_one_or_none()
+                if prev_r and prev_r.source_stats:
+                    prev_stats = prev_r.source_stats
+
+            qp_agent = QueryPlanAgent(llm_manager=llm_manager)
+            query_plan = await qp_agent.plan(
+                project_description=project.description,
+                memory_text=memory_text or "",
+                round_number=round_.round_number,
+                max_rounds=project.max_rounds or get_max_rounds(project.search_config),
+                tool_reliability=registry.get_reliability_report(),
+                prev_source_stats=prev_stats,
+            )
+            if query_plan:
+                _plan_source = "agent"
+                # 从 agent 日志中取 rationale（存在 query_plan 的 metadata 或 agent 返回值中）
+                _plan_rationale = getattr(query_plan, '_rationale', '') or ''
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("[prepare] QueryPlanAgent 失败: %s", e)
+            query_plan = None
+
+    # Fallback
+    if query_plan is None:
+        preferred_kw = profile.preferred_keywords if profile else []
+        excluded_kw = profile.excluded_keywords if profile else []
+        query_plan = await build_query(
+            project_description=project.description,
+            project_domain=project.domain or "",
+            round_number=round_.round_number,
+            preferred_keywords=preferred_kw,
+            excluded_keywords=excluded_kw,
+            preferred_sources=project.search_config.get("preferred_sources") if project.search_config else None,
+            llm_manager=llm_manager,
+            search_config=project.search_config,
+            project_domains=project.domains,
+            project_title=project.title,
+        )
+
+    # 生成 per-source 关键词方案（展示所有可用源，Agent 推荐的默认开启）
     disabled_sources = {s.strip() for s in os.getenv("DISABLED_SOURCES", "").split(",") if s.strip()}
+
+    from app.services.fetchers.international import ALL_FETCHERS
+    all_available_sources = [sid for sid in ALL_FETCHERS.keys() if sid not in disabled_sources]
+    agent_recommended = set(query_plan.sources)
 
     from app.services.source_query_adapters import generate_all_keywords
     keyword_result = await generate_all_keywords(
@@ -249,10 +301,16 @@ async def prepare_round(
         base_query=query_plan.base_query,
         original_chinese_query=query_plan.original_chinese_query,
         project_description=f"{project.title}。{project.description}" if project.title else project.description,
-        sources=query_plan.sources,
+        sources=all_available_sources,
         llm_manager=llm_manager,
         disabled_sources=disabled_sources,
     )
+
+    # 标记 Agent 未推荐的源为 disabled（用户仍可手动开启）
+    for plan in keyword_result.source_plans:
+        if plan.source_id not in agent_recommended:
+            plan.enabled = False
+            plan.notes = f"Agent 未推荐（可手动开启）" + (f"；{plan.notes}" if plan.notes else "")
 
     # 存入 Redis（TTL 10 分钟）
     import redis.asyncio as aioredis
@@ -297,6 +355,13 @@ async def prepare_round(
         round_number=round_.round_number,
         base_query=query_plan.base_query,
         original_chinese_query=query_plan.original_chinese_query,
+        exclude_terms=query_plan.exclude_terms,
+        year_from=query_plan.year_from,
+        year_to=query_plan.year_to,
+        max_per_source=query_plan.max_results_per_source,
+        language_scope=query_plan.language_scope,
+        plan_source=_plan_source,
+        plan_rationale=_plan_rationale,
         english_query_source=query_plan.english_query_source,
         cn_query_source=query_plan.cn_query_source,
         source_plans=[SourceKeywordPlanOut(**p.to_dict()) for p in keyword_result.source_plans],
@@ -344,7 +409,7 @@ async def confirm_keywords(
             detail=f"轮次状态不正确（期望 awaiting_keywords，当前 {round_.status}）",
         )
 
-    # 将用户确认的关键词存入 Redis
+    # 将用户确认的关键词 + QueryPlan 修改存入 Redis
     import redis.asyncio as aioredis
     redis = aioredis.from_url(settings.redis_url)
     try:
@@ -353,6 +418,21 @@ async def confirm_keywords(
             "source_plans": [p.model_dump() for p in body.source_plans],
             "confirmed": True,
         }
+        # 用户编辑的 QueryPlan 参数覆盖
+        if body.base_query is not None:
+            confirmed_data["base_query"] = body.base_query
+        if body.original_chinese_query is not None:
+            confirmed_data["original_chinese_query"] = body.original_chinese_query
+        if body.exclude_terms is not None:
+            confirmed_data["exclude_terms"] = body.exclude_terms
+        if body.year_from is not None:
+            confirmed_data["year_from"] = body.year_from
+        if body.year_to is not None:
+            confirmed_data["year_to"] = body.year_to
+        if body.max_per_source is not None:
+            confirmed_data["max_per_source"] = body.max_per_source
+        if body.language_scope is not None:
+            confirmed_data["language_scope"] = body.language_scope
         await redis.set(
             f"keyword_plan:{round_id}",
             json.dumps(confirmed_data),
@@ -402,6 +482,76 @@ async def ws_round_status(websocket: WebSocket, round_id: uuid.UUID):
             await asyncio.sleep(2)
     except WebSocketDisconnect:
         pass
+
+
+@router.post("/{project_id}/documents/{document_id}/deep-dive")
+async def trigger_deep_dive(
+    project_id: uuid.UUID,
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """触发单篇文献的深度分析（异步 Celery 任务）"""
+    await _get_project_or_404(project_id, current_user.id, db)
+
+    # 验证文档存在
+    doc_result = await db.execute(select(Document).where(Document.id == document_id))
+    doc = doc_result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(status_code=404, detail="文档不存在")
+
+    from app.workers.deep_dive_tasks import execute_deep_dive
+    task = execute_deep_dive.delay(str(document_id), str(project_id))
+
+    return {"task_id": task.id, "status": "started", "document_id": str(document_id)}
+
+
+@router.get("/{project_id}/documents/{document_id}/deep-dive")
+async def get_deep_dive_result(
+    project_id: uuid.UUID,
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取深度分析结果（从 Redis 缓存读取）"""
+    await _get_project_or_404(project_id, current_user.id, db)
+
+    try:
+        import redis.asyncio as aioredis
+        from app.config import settings as _s
+        r = aioredis.from_url(_s.redis_url)
+        cached = await r.get(f"deep_dive:{document_id}")
+        await r.close()
+        if cached:
+            return {"status": "completed", "analysis": json.loads(cached)}
+    except Exception:
+        pass
+
+    return {"status": "not_found", "analysis": None}
+
+
+@router.patch("/{project_id}/scoring-config")
+async def update_scoring_config(
+    project_id: uuid.UUID,
+    config: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新评分配置（斩杀线等）"""
+    project = await _get_project_or_404(project_id, current_user.id, db)
+
+    search_config = project.search_config or {}
+    if "scoring_cutoff" in config:
+        cutoff = float(config["scoring_cutoff"])
+        if not (0 <= cutoff <= 10):
+            raise HTTPException(status_code=400, detail="斩杀线必须在 0-10 之间")
+        search_config["scoring_cutoff"] = cutoff
+
+    await db.execute(
+        update(Project).where(Project.id == project_id).values(search_config=search_config)
+    )
+    await db.commit()
+    return {"status": "ok", "scoring_cutoff": search_config.get("scoring_cutoff")}
 
 
 async def _get_project_or_404(project_id, user_id, db):

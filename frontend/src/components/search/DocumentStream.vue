@@ -1,7 +1,7 @@
 <template>
   <div class="document-stream" v-if="docs.length > 0">
     <div class="stream-header">
-      <span class="stream-count">{{ docs.length }} 篇文献已到达</span>
+      <span class="stream-count">{{ docs.length }} 篇候选文献（去重筛选前）</span>
       <span class="stream-hint">实时推送中</span>
     </div>
     <div class="stream-container">

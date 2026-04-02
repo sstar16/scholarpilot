@@ -17,7 +17,7 @@ class Project(Base):
     domains: Mapped[list | None] = mapped_column(JSON, nullable=True)  # 多领域: ["biology","chemistry"]
     search_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # 自定义搜索配置
     current_round: Mapped[int] = mapped_column(Integer, default=0)
-    max_rounds: Mapped[int] = mapped_column(Integer, default=5)  # 可配置轮数
+    max_rounds: Mapped[int] = mapped_column(Integer, default=0)  # 0=无限制
     status: Mapped[str] = mapped_column(String(20), default="active")  # active|monitoring|archived
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

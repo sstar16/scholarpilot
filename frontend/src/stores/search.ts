@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, reactive, computed } from 'vue'
-import { searchApi, feedbackApi } from '../api/client'
+import { searchApi, feedbackApi, bucketApi } from '../api/client'
 
 export const useSearchStore = defineStore('search', () => {
   const projectId = ref<string>('')
@@ -166,34 +166,27 @@ export const useSearchStore = defineStore('search', () => {
     }))
     const res = await feedbackApi.submit(pid, roundId, feedbacks)
     Object.keys(feedbackDrafts).forEach(k => delete feedbackDrafts[k])
-    documents.value = []
+    return res.data
+  }
 
-    // Re-fetch rounds to discover the new round created by backend
-    await fetchRounds(pid)
-    const newRound = rounds.value.find(
-      (r: any) => r.status === 'running' || r.status === 'pending'
-    )
-    if (newRound) {
-      // Try per-source keywords flow for next round
-      try {
-        const kwResult = await searchApi.prepareRound(pid)
-        keywordPlan.value = kwResult.data
-        awaitingKeywordConfirmation.value = true
-        currentRound.value = {
-          ...newRound,
-          status: 'awaiting_keywords',
-          search_queries: {
-            base_query: kwResult.data.base_query,
-            original_chinese_query: kwResult.data.original_chinese_query,
-          },
-        }
-        return res.data
-      } catch {
-        // Feature disabled — fall back to polling
-        startPolling(pid, newRound.id)
-      }
+  async function finalizeRound(pid: string) {
+    if (!currentRound.value) throw new Error('no active round')
+    const roundId = currentRound.value.id
+    const res = await searchApi.finalizeRound(pid, roundId)
+    // 更新轮次状态为已完成
+    if (currentRound.value) {
+      currentRound.value = { ...currentRound.value, status: 'complete' }
     }
+    const idx = rounds.value.findIndex((r: any) => r.id === roundId)
+    if (idx >= 0) rounds.value[idx] = { ...rounds.value[idx], status: 'complete' }
+    return res.data
+  }
 
+  async function classifyDocument(pid: string, docId: string, bucket: string) {
+    const res = await bucketApi.classify(pid, docId, { bucket })
+    // 同步更新 documents 列表中的 bucket 字段
+    const doc = documents.value.find((d: any) => d.id === docId)
+    if (doc) doc.bucket = bucket
     return res.data
   }
 
@@ -235,6 +228,13 @@ export const useSearchStore = defineStore('search', () => {
           doc.ai_summary = data.summary_preview
           doc.ai_key_points = data.key_points
         }
+        // 同步更新 streamingDocs 中的 has_summary（让 spinner 变成 ✓）
+        const streamDoc = streamingDocs.value.find(
+          (d: any) => d.external_id === data.external_id && d.source === data.source
+        )
+        if (streamDoc) {
+          streamDoc.has_summary = true
+        }
         break
       }
       case 'round_complete':
@@ -271,6 +271,7 @@ export const useSearchStore = defineStore('search', () => {
     sseConnected, streamingDocs, statusText, handleSSEEvent,
     keywordPlan, awaitingKeywordConfirmation,
     fetchRounds, startRound, prepareRound, confirmKeywords,
-    startPolling, loadRoundResults, setFeedback, submitFeedback, reset,
+    startPolling, loadRoundResults, setFeedback, submitFeedback,
+    finalizeRound, classifyDocument, reset,
   }
 })

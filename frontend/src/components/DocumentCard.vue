@@ -1,5 +1,5 @@
 <template>
-  <div class="doc-card" :class="{
+  <div ref="cardRef" class="doc-card" :class="{
     rated: localFeedback !== null,
     [`fb-${localFeedback}`]: localFeedback !== null,
     'below-cutoff': doc.below_cutoff,
@@ -81,14 +81,14 @@
         </div>
       </div>
 
-      <!-- Feedback + Deep Dive button -->
+      <!-- Bucket classification + Deep Dive button -->
       <div class="feedback-bar">
-        <span class="fb-label">相关度</span>
-        <div class="pills">
-          <button v-for="o in opts" :key="o.value" class="pill" :class="[o.cls, { active: localFeedback === o.value }]" @click="pick(o.value)">
-            {{ o.label }}
-          </button>
-        </div>
+        <BucketDropZone
+          :doc-id="doc.id"
+          :current-bucket="doc.bucket || null"
+          :card-el="cardRef"
+          @classify="onClassify"
+        />
         <button
           v-if="showDeepDive && !deepDiveResult"
           class="pill pill-dd"
@@ -105,6 +105,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import BucketDropZone from './bucket/BucketDropZone.vue'
+
 const props = defineProps<{
   doc: any
   initialFeedback?: number | null
@@ -114,25 +116,28 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   (e: 'feedback', v: number): void
+  (e: 'classify', bucket: string): void
   (e: 'deep-dive'): void
 }>()
 const roundDone = computed(() => ['awaiting_feedback', 'completed'].includes(props.roundStatus ?? ''))
 const expanded = ref(false)
 const ddExpanded = ref(false)
+const cardRef = ref<HTMLElement>()
 const localFeedback = ref<number | null>(props.initialFeedback ?? null)
 const showDeepDive = computed(() => {
   const s = props.doc.agent_score
-  return (s != null && s >= 7.0) || localFeedback.value === 2
+  const bucket = props.doc.bucket
+  return (s != null && s >= 7.0) || bucket === 'very_relevant' || localFeedback.value === 2
 })
 watch(() => props.initialFeedback, v => { localFeedback.value = v ?? null })
 
-const opts = [
-  { label: '无关', value: -1, cls: 'p-neg' },
-  { label: '不确定', value: 0, cls: 'p-mid' },
-  { label: '相关', value: 1, cls: 'p-pos' },
-  { label: '很相关', value: 2, cls: 'p-top' },
-]
-function pick(v: number) { localFeedback.value = v; emit('feedback', v) }
+function onClassify(bucket: string) {
+  // 映射 bucket -> legacy feedback 值（兼容）
+  const map: Record<string, number> = { very_relevant: 2, relevant: 1, uncertain: 0, irrelevant: -1 }
+  localFeedback.value = map[bucket] ?? 0
+  emit('classify', bucket)
+  emit('feedback', map[bucket] ?? 0)
+}
 
 const docType = computed(() => {
   const m: Record<string, { label: string; accent: string }> = {

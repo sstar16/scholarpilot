@@ -398,7 +398,84 @@ _SOURCE_RULES = {
 }
 
 
-async def _llm_batch_optimize(
+async def _llm_optimize_single(
+    source_id: str,
+    base_query: str,
+    chinese_query: Optional[str],
+    project_description: str,
+    llm_manager,
+) -> Optional[str]:
+    """单个数据源的 LLM 关键词优化（轻量 prompt，快速返回）"""
+    rule = _SOURCE_RULES.get(source_id, "Plain keywords")
+
+    prompt = (
+        f"Optimize search keywords for the '{source_id}' database.\n\n"
+        f"Research topic: {project_description[:300]}\n"
+        f"Base English keywords: {base_query}\n"
+        f"Base Chinese keywords: {chinese_query or '(none)'}\n\n"
+        f"Database rule: {rule}\n\n"
+        "Return ONLY the optimized query string, nothing else. "
+        "Use domain-specific terms, not generic words."
+    )
+
+    try:
+        result = await asyncio.wait_for(
+            llm_manager.generate(prompt, temperature=0.1),
+            timeout=12.0,
+        )
+        if result:
+            # 清理：去除引号和多余空白
+            cleaned = result.strip().strip('"').strip("'").strip()
+            if cleaned and len(cleaned) > 2:
+                return cleaned
+    except asyncio.TimeoutError:
+        logger.warning("[SourceAdapters] LLM 优化超时: %s", source_id)
+    except Exception as e:
+        logger.warning("[SourceAdapters] LLM 优化失败 %s: %s", source_id, e)
+
+    return None
+
+
+async def _llm_generate_synonyms(
+    base_query: str,
+    chinese_query: Optional[str],
+    project_description: str,
+    llm_manager,
+) -> Optional[Dict[str, List[str]]]:
+    """单独一次 LLM 调用生成同义词表（与关键词优化并行）"""
+    prompt = (
+        "Generate domain-specific synonym mappings for academic search scoring.\n\n"
+        f"Research topic: {project_description[:300]}\n"
+        f"Key terms: {base_query}\n"
+        f"Chinese terms: {chinese_query or '(none)'}\n\n"
+        "Return JSON: {\"english_term\": [\"synonym1\", \"synonym2\", ...]} "
+        "with 5-10 synonym groups. Include Chinese equivalents. "
+        "Return ONLY JSON."
+    )
+
+    try:
+        result = await asyncio.wait_for(
+            llm_manager.generate(prompt, temperature=0.1),
+            timeout=12.0,
+        )
+        if result:
+            match = re.search(r'\{.*\}', result, re.DOTALL)
+            if match:
+                parsed = json.loads(match.group())
+                if isinstance(parsed, dict):
+                    return {
+                        str(k): [str(s) for s in v] if isinstance(v, list) else []
+                        for k, v in parsed.items()
+                    }
+    except asyncio.TimeoutError:
+        logger.warning("[SourceAdapters] 同义词生成超时")
+    except Exception as e:
+        logger.warning("[SourceAdapters] 同义词生成失败: %s", e)
+
+    return None
+
+
+async def _llm_parallel_optimize(
     base_query: str,
     chinese_query: Optional[str],
     project_description: str,
@@ -406,82 +483,42 @@ async def _llm_batch_optimize(
     llm_manager,
 ) -> Tuple[Dict[str, str], Optional[Dict[str, List[str]]]]:
     """
-    单次 LLM 调用为所有源生成优化关键词 + 项目同义词表。
-    返回 (hints, synonyms)。失败返回 ({}, None)。
+    并行为每个源独立调用 LLM 优化关键词 + 并行生成同义词。
+    单源失败不影响其他源。
     """
     if not llm_manager:
         return {}, None
 
-    rules_text = "\n".join(
-        f"- {sid}: {_SOURCE_RULES.get(sid, 'Plain keywords')}"
+    # 并行：每源一个轻量 LLM 调用 + 一个同义词调用
+    source_tasks = {
+        sid: _llm_optimize_single(sid, base_query, chinese_query, project_description, llm_manager)
         for sid in source_ids
+    }
+    synonym_task = _llm_generate_synonyms(base_query, chinese_query, project_description, llm_manager)
+
+    # 全部并行执行
+    all_tasks = list(source_tasks.values()) + [synonym_task]
+    results = await asyncio.gather(*all_tasks, return_exceptions=True)
+
+    # 拆分结果
+    source_results = results[:len(source_ids)]
+    synonym_result = results[-1]
+
+    hints: Dict[str, str] = {}
+    for sid, result in zip(source_ids, source_results):
+        if isinstance(result, str) and result:
+            hints[sid] = result
+
+    synonyms = synonym_result if isinstance(synonym_result, dict) else None
+
+    succeeded = len(hints)
+    logger.info(
+        "[SourceAdapters] 并行 LLM 优化: %d/%d 源成功, 同义词: %s",
+        succeeded, len(source_ids),
+        f"{len(synonyms)} 组" if synonyms else "失败",
     )
 
-    prompt = (
-        "You are an expert academic/patent search optimizer. "
-        "Given a research description, generate optimized search queries for each database.\n\n"
-        "CRITICAL RULES:\n"
-        "1. Each database has DIFFERENT syntax and keyword limits. Follow the rules EXACTLY.\n"
-        "2. Use DOMAIN-SPECIFIC terms, NOT generic words. "
-        "For example: 'seamless capsule' NOT 'capsule', 'flavor bead' NOT 'bead'.\n"
-        "3. For Chinese sources, use PRECISE Chinese technical terms.\n"
-        "4. Keep within the keyword count limit for each source.\n\n"
-        f"Research description:\n{project_description[:400]}\n\n"
-        f"Base English keywords: {base_query}\n"
-        f"Base Chinese keywords: {chinese_query or '(none)'}\n\n"
-        f"Database rules:\n{rules_text}\n\n"
-        "Return a JSON object with TWO keys:\n"
-        '1. "queries": {source_id: "optimized query string"}\n'
-        '2. "synonyms": {english_term: [synonym1, synonym2, ...]} — '
-        "generate 5-10 domain-specific synonym mappings for scoring.\n\n"
-        "Example:\n"
-        '{"queries": {"openalex": "seamless capsule automated production", '
-        '"epo_ops": "ta=\\"seamless capsule\\" AND ta=\\"automated production\\"", '
-        '"openalex_zh": "爆珠 自动化 生产线", '
-        '"dblp": "capsule automation"}, '
-        '"synonyms": {"seamless capsule": ["flavor bead", "burst bead", "爆珠"], '
-        '"automated production": ["production line", "manufacturing line", "自动化生产线"]}}\n'
-        "Return ONLY JSON, no explanation."
-    )
-
-    try:
-        result = await asyncio.wait_for(
-            llm_manager.generate(prompt, temperature=0.1),
-            timeout=15.0,
-        )
-        if result:
-            match = re.search(r'\{.*\}', result, re.DOTALL)
-            if match:
-                parsed = json.loads(match.group())
-                if isinstance(parsed, dict):
-                    # 提取 queries
-                    queries = parsed.get("queries", parsed)
-                    if not isinstance(queries, dict):
-                        queries = parsed
-                    hints = {k: str(v) for k, v in queries.items() if k in source_ids and v}
-
-                    # 提取同义词
-                    synonyms = parsed.get("synonyms")
-                    if isinstance(synonyms, dict):
-                        synonyms = {
-                            str(k): [str(s) for s in v] if isinstance(v, list) else []
-                            for k, v in synonyms.items()
-                        }
-                    else:
-                        synonyms = None
-
-                    logger.info(
-                        "[SourceAdapters] LLM 优化成功: %d/%d 源, %d 同义词组",
-                        len(hints), len(source_ids),
-                        len(synonyms) if synonyms else 0,
-                    )
-                    return hints, synonyms
-    except asyncio.TimeoutError:
-        logger.warning("[SourceAdapters] LLM 批量优化超时 (8s)")
-    except Exception as e:
-        logger.warning("[SourceAdapters] LLM 批量优化失败: %s", e)
-
-    return {}, None
+    return hints, synonyms
 
 
 # ─── 主入口 ────────────────────────────────────────────────
@@ -502,8 +539,8 @@ async def generate_all_keywords(
     t0 = time.time()
     disabled = disabled_sources or set()
 
-    # Step 1: LLM 批量优化 + 同义词生成
-    llm_hints, synonyms = await _llm_batch_optimize(
+    # Step 1: 并行 LLM 优化（每源独立调用，互不阻塞）
+    llm_hints, synonyms = await _llm_parallel_optimize(
         base_query, original_chinese_query, project_description,
         [s for s in sources if s not in disabled],
         llm_manager,

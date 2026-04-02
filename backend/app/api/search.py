@@ -15,6 +15,7 @@ from app.models.search_round import SearchRound
 from app.models.round_document import RoundDocument
 from app.models.document import Document
 from app.models.feedback import Feedback
+from app.models.document_classification import DocumentClassification
 from app.schemas.search import RoundStatusOut, DocumentOut, RoundResultsOut
 from app.schemas.keywords import (
     KeywordGenerationResponse,
@@ -40,11 +41,6 @@ async def start_round(
 ):
     """创建并启动下一轮检索"""
     project = await _get_project_or_404(project_id, current_user.id, db)
-
-    from app.services.query_builder import get_max_rounds
-    max_rounds = project.max_rounds or get_max_rounds(project.search_config)
-    if project.current_round >= max_rounds:
-        raise HTTPException(status_code=400, detail=f"已完成全部{max_rounds}轮检索，进入监控模式")
 
     # 检查当前轮次是否已完成
     if project.current_round > 0:
@@ -101,9 +97,10 @@ async def get_round_results(
     )
     rows = result.all()
 
-    # 获取当前用户对这些文档的反馈
+    # 获取当前用户对这些文档的反馈 (legacy) + 桶分类
     doc_ids = [row.Document.id for row in rows]
     feedbacks = {}
+    buckets = {}
     if doc_ids:
         fb_result = await db.execute(
             select(Feedback).where(
@@ -114,6 +111,16 @@ async def get_round_results(
         )
         for fb in fb_result.scalars().all():
             feedbacks[fb.document_id] = fb.relevance
+
+        cls_result = await db.execute(
+            select(DocumentClassification).where(
+                DocumentClassification.user_id == current_user.id,
+                DocumentClassification.project_id == project_id,
+                DocumentClassification.document_id.in_(doc_ids),
+            )
+        )
+        for cls in cls_result.scalars().all():
+            buckets[cls.document_id] = cls.bucket
 
     docs_out = []
     for rd, doc in rows:
@@ -145,6 +152,7 @@ async def get_round_results(
             one_line_summary=rd.one_line_summary or doc.one_line_summary,
             below_cutoff=rd.below_cutoff or False,
             user_feedback=feedbacks.get(doc.id),
+            bucket=buckets.get(doc.id),
         ))
 
     return RoundResultsOut(
@@ -184,11 +192,6 @@ async def prepare_round(
         raise HTTPException(status_code=400, detail="Per-source keywords feature is disabled")
 
     project = await _get_project_or_404(project_id, current_user.id, db)
-
-    from app.services.query_builder import get_max_rounds
-    max_rounds = project.max_rounds or get_max_rounds(project.search_config)
-    if project.current_round >= max_rounds:
-        raise HTTPException(status_code=400, detail=f"已完成全部{max_rounds}轮检索，进入监控模式")
 
     # 检查是否有已创建但未启动的轮次（由 feedback 端点预创建）
     existing_pending = None
@@ -528,6 +531,113 @@ async def get_deep_dive_result(
         pass
 
     return {"status": "not_found", "analysis": None}
+
+
+@router.post("/{project_id}/rounds/{round_id}/finalize")
+async def finalize_round(
+    project_id: uuid.UUID,
+    round_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """用户手动结束本轮 — 触发 Memory Agent + Profile 更新"""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    project = await _get_project_or_404(project_id, current_user.id, db)
+    round_ = await _get_round_or_404(project_id, round_id, current_user.id, db)
+
+    if round_.status not in ("awaiting_feedback",):
+        raise HTTPException(status_code=400, detail=f"轮次状态 {round_.status}，无法结束")
+
+    # 收集本轮文档的桶分类
+    rd_result = await db.execute(
+        select(RoundDocument, Document)
+        .join(Document, RoundDocument.document_id == Document.id)
+        .where(RoundDocument.round_id == round_id)
+    )
+    rows = rd_result.all()
+    doc_ids = [doc.id for _, doc in rows]
+
+    cls_result = await db.execute(
+        select(DocumentClassification).where(
+            DocumentClassification.user_id == current_user.id,
+            DocumentClassification.project_id == project_id,
+            DocumentClassification.document_id.in_(doc_ids),
+        )
+    ) if doc_ids else None
+
+    classifications = {}
+    if cls_result:
+        for cls in cls_result.scalars().all():
+            classifications[cls.document_id] = cls
+
+    # 构建 feedback_dicts（兼容现有 profile_service + memory_agent）
+    feedback_dicts = []
+    bucket_to_relevance = {"very_relevant": 2, "relevant": 1, "uncertain": 0, "irrelevant": -1}
+    for rd, doc in rows:
+        cls = classifications.get(doc.id)
+        if not cls:
+            continue
+        feedback_dicts.append({
+            "document_id": doc.id,
+            "relevance": bucket_to_relevance.get(cls.bucket, 0),
+            "bucket": cls.bucket,
+            "reason": cls.reason,
+            "title": doc.title or "",
+            "source": doc.source,
+            "one_line_summary": rd.one_line_summary or doc.one_line_summary or "",
+            "document": {
+                "title": doc.title or "",
+                "abstract": doc.abstract or "",
+                "source": doc.source,
+                "ai_key_points": doc.ai_key_points or [],
+            },
+        })
+
+    # Profile 更新
+    if feedback_dicts:
+        from app.services.profile_service import update_profile_from_feedbacks
+        await update_profile_from_feedbacks(current_user.id, project_id, feedback_dicts, db)
+
+    # Memory Agent 更新
+    from app.config import settings as _cfg
+    if feedback_dicts and _cfg.enable_scoring_agent:
+        try:
+            from app.harness.memory_agent import run_memory_update
+            from app.services.core.llm_providers import LLMProviderManager
+            from app.services.core.llm_config_store import load_llm_config
+
+            _llm_mem = LLMProviderManager(default_ollama_host=_cfg.ollama_host)
+            await load_llm_config(_llm_mem, _cfg.redis_url)
+
+            await run_memory_update(
+                user_id=current_user.id,
+                project_id=project_id,
+                project_description=project.description,
+                feedback_dicts=feedback_dicts,
+                llm_manager=_llm_mem,
+                db=db,
+            )
+        except Exception as e:
+            logger.warning("[finalize] Memory Agent 失败: %s", e)
+
+    # 异步更新画像 embedding
+    from app.workers.embedding_tasks import update_profile_embedding
+    update_profile_embedding.delay(str(current_user.id), str(project_id))
+
+    # 标记轮次完成
+    from app.services.progressive_search import mark_round_complete
+    await mark_round_complete(round_id, db)
+
+    classified_count = len(feedback_dicts)
+    total_count = len(rows)
+    return {
+        "status": "complete",
+        "classified": classified_count,
+        "total": total_count,
+        "message": f"第{round_.round_number}轮已结束，{classified_count}/{total_count} 篇已分类",
+    }
 
 
 @router.patch("/{project_id}/scoring-config")

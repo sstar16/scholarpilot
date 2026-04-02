@@ -48,6 +48,7 @@ class ScoringAgent:
         doc: Dict,
         project_description: str,
         user_memory: str = "",
+        bucket_examples: str = "",
     ) -> ScoredDoc:
         """
         评分单篇文档。
@@ -60,6 +61,7 @@ class ScoringAgent:
             project_description=project_description,
             doc=doc,
             user_memory=user_memory,
+            bucket_examples=bucket_examples,
         )
 
         # 合并为单个 prompt（因为 generate() 接口只接受单字符串）
@@ -108,6 +110,7 @@ class ScoringAgent:
         project_description: str,
         cutoff: float = 7.0,
         user_memory: str = "",
+        bucket_examples: str = "",
     ) -> Tuple[List[Dict], List[Dict]]:
         """
         并行评分所有文档，按 cutoff 分为 above/below 两组。
@@ -126,7 +129,7 @@ class ScoringAgent:
 
         # 并行评分
         tasks = [
-            self.score_single(doc, project_description, user_memory)
+            self.score_single(doc, project_description, user_memory, bucket_examples)
             for doc in docs
         ]
         results: List[ScoredDoc] = await asyncio.gather(*tasks)

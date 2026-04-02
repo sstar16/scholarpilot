@@ -23,9 +23,6 @@ async def create_next_round(
 ) -> SearchRound:
     """创建下一轮（project.current_round + 1），支持自定义轮数"""
     next_num = project.current_round + 1
-    max_rounds = project.max_rounds or get_max_rounds(project.search_config)
-    if next_num > max_rounds:
-        raise ValueError(f"已完成全部{max_rounds}轮检索")
 
     config = _get_round_config(next_num, project.search_config)
     round_ = SearchRound(
@@ -198,29 +195,46 @@ async def save_round_documents(
     await db.commit()
 
 
-async def activate_monitoring(project: Project, db: AsyncSession):
-    """最后一轮完成后激活每日监控"""
-    max_rounds = project.max_rounds or get_max_rounds(project.search_config)
-    result = await db.execute(
-        select(SearchRound).where(
-            SearchRound.project_id == project.id,
-            SearchRound.round_number == max_rounds,
+async def activate_monitoring(
+    project: Project,
+    db: AsyncSession,
+    schedule: str = "daily",
+    search_config: Optional[Dict[str, Any]] = None,
+):
+    """激活每日/每周监控（用户可随时触发，不再绑定固定轮次）"""
+    # 如果未传配置，从最近一轮获取
+    if search_config is None:
+        result = await db.execute(
+            select(SearchRound).where(
+                SearchRound.project_id == project.id,
+            ).order_by(SearchRound.round_number.desc()).limit(1)
         )
-    )
-    round5 = result.scalar_one_or_none()
-    search_config = {
-        "queries": round5.search_queries if round5 else {},
-        "sources": round5.sources_used if round5 else [],
-        "language_scope": "global",
-    }
+        latest_round = result.scalar_one_or_none()
+        search_config = {
+            "queries": latest_round.search_queries if latest_round else {},
+            "sources": latest_round.sources_used if latest_round else [],
+            "language_scope": "global",
+        }
 
-    job = MonitorJob(
-        project_id=project.id,
-        user_id=project.user_id,
-        schedule="daily",
-        is_active=True,
-        search_config=search_config,
+    # 检查是否已有 MonitorJob
+    existing = await db.execute(
+        select(MonitorJob).where(MonitorJob.project_id == project.id)
     )
-    db.add(job)
+    job = existing.scalar_one_or_none()
+    if job:
+        job.is_active = True
+        job.schedule = schedule
+        job.search_config = search_config
+    else:
+        job = MonitorJob(
+            project_id=project.id,
+            user_id=project.user_id,
+            schedule=schedule,
+            is_active=True,
+            search_config=search_config,
+        )
+        db.add(job)
+
     project.status = "monitoring"
     await db.commit()
+    return job

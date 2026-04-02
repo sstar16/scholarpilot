@@ -134,12 +134,11 @@ async def execute_search(
     # 元数据补全（对缺少摘要的文档尝试从 OpenAlex/Crossref 补全）
     all_docs = await enrich_missing_abstracts(all_docs)
 
-    # 打分并选 Top-N（支持跨轮去重和综合评分）
-    max_select = query_plan.max_results_per_source * len(task_sources)
+    # 传统评分（计算 _relevance_score 用作排序参考和 LLM fallback，但不截断）
     selected = select_top_documents(
         docs=all_docs,
         query_terms=query_plan.expanded_terms,
-        max_select=max_select,
+        max_select=len(all_docs),  # 不截断，全量送 Scoring Agent
         exclude_terms=query_plan.exclude_terms,
         exclude_doc_keys=exclude_doc_keys,
         scoring_weights=scoring_weights,
@@ -147,13 +146,13 @@ async def execute_search(
         dynamic_synonyms=dynamic_synonyms,
     )
 
-    # 保底机制：若评分后 0 篇但有候选文档，放宽条件重试
+    # 保底机制：若跨轮去重后 0 篇，放宽条件重试
     if not selected and all_docs:
-        logger.warning("[SearchEngine] 评分后 0 篇结果，放宽条件重试（忽略跨轮去重）")
+        logger.warning("[SearchEngine] 去重后 0 篇结果，放宽条件重试（忽略跨轮去重）")
         selected = select_top_documents(
             docs=all_docs,
             query_terms=query_plan.expanded_terms,
-            max_select=min(3, max_select),
+            max_select=len(all_docs),
             exclude_terms=None,
             exclude_doc_keys=None,
             scoring_weights=scoring_weights,

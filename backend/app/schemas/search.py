@@ -53,7 +53,9 @@ class DocumentOut(BaseModel):
     one_line_summary: Optional[str] = None    # 一句话总结
     below_cutoff: bool = False                # 是否在斩杀线以下
     # 反馈状态
-    user_feedback: Optional[int] = None  # -1/0/1/2 或 None
+    user_feedback: Optional[int] = None  # -1/0/1/2 或 None (legacy)
+    # 桶分类
+    bucket: Optional[str] = None  # very_relevant/relevant/uncertain/irrelevant
 
     class Config:
         from_attributes = True

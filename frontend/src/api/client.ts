@@ -68,11 +68,38 @@ export const searchApi = {
   // Scoring config
   updateScoringConfig: (projectId: string, config: any) =>
     api.patch(`/api/projects/${projectId}/scoring-config`, config),
+  // Finalize round (new: user-driven)
+  finalizeRound: (projectId: string, roundId: string) =>
+    api.post(`/api/projects/${projectId}/rounds/${roundId}/finalize`),
 }
 
 export const feedbackApi = {
   submit: (projectId: string, roundId: string, feedbacks: any[]) =>
     api.post(`/api/projects/${projectId}/rounds/${roundId}/feedback`, { feedbacks }),
+}
+
+export const bucketApi = {
+  classify: (projectId: string, docId: string, data: { bucket: string; reason?: string }) =>
+    api.put(`/api/projects/${projectId}/documents/${docId}/classify`, data),
+  move: (projectId: string, docId: string, data: { to_bucket: string }) =>
+    api.put(`/api/projects/${projectId}/documents/${docId}/move`, data),
+  unclassify: (projectId: string, docId: string) =>
+    api.delete(`/api/projects/${projectId}/documents/${docId}/classify`),
+  getBuckets: (projectId: string) =>
+    api.get(`/api/projects/${projectId}/buckets`),
+}
+
+export const monitorApi = {
+  enable: (projectId: string, data?: { schedule?: string; search_config?: any }) =>
+    api.post(`/api/projects/${projectId}/monitoring/enable`, data || {}),
+  disable: (projectId: string) =>
+    api.post(`/api/projects/${projectId}/monitoring/disable`),
+  get: (projectId: string) =>
+    api.get(`/api/projects/${projectId}/monitoring`),
+  update: (projectId: string, data: any) =>
+    api.patch(`/api/projects/${projectId}/monitoring`, data),
+  getResults: (projectId: string) =>
+    api.get(`/api/projects/${projectId}/monitoring/results`),
 }
 
 export const sseApi = {

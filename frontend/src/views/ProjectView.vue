@@ -58,10 +58,9 @@
       </el-dialog>
 
       <div class="project-body">
-        <!-- Left: round timeline -->
-        <aside class="sidebar">
-          <RoundTimeline :project="project" :rounds="searchStore.rounds" />
-        </aside>
+        <!-- Left: bucket sidebar -->
+        <BucketSidebar :project-id="String(project.id)" />
+
 
         <!-- Main content -->
         <main class="main-content">
@@ -72,7 +71,7 @@
                 <div style="font-size:64px">🔬</div>
               </template>
               <el-button type="primary" size="large" :loading="searchStore.isStarting" @click="startRound">
-                开始第1轮检索（近5年）
+                开始首轮检索
               </el-button>
             </el-empty>
           </div>
@@ -108,8 +107,8 @@
                 :current-source="currentSearchingSource"
               />
 
-              <!-- Agent plan (appears when agent planning is active) -->
-              <AgentPlanView ref="agentPlanRef" />
+              <!-- Agent plan — 已被 KeywordConfirmPanel 替代，搜索中不再显示 -->
+              <!-- <AgentPlanView ref="agentPlanRef" /> -->
 
               <!-- Document stream (flowing cards) -->
               <DocumentStream :docs="searchStore.streamingDocs" />
@@ -407,22 +406,24 @@
                 style="margin-bottom:16px"
               >
                 <template #title>
-                  请对以下文献评分（{{ minRatingHint }}），AI 将根据您的反馈优化下一轮检索方向
+                  请将文献分类到对应的桶中（点击文献下方的分类按钮），AI 将根据分类优化下一轮检索
                 </template>
               </el-alert>
 
-              <!-- Feedback progress -->
+              <!-- Finalize round + classification progress -->
               <div v-if="currentRound?.status === 'awaiting_feedback'" class="feedback-progress">
-                <span>已评分 {{ searchStore.ratedCount }} / {{ searchStore.documents.length }} 篇</span>
-                <el-button
-                  type="primary"
-                  :disabled="searchStore.ratedCount < minRequired"
-                  :loading="submitting"
-                  @click="submitFeedback"
-                >
-                  {{ nextRoundLabel }}
+                <span>已分类 {{ classifiedCount }} / {{ searchStore.documents.length }} 篇</span>
+                <el-button type="primary" :loading="submitting" @click="finalizeCurrentRound">
+                  结束本轮
                 </el-button>
               </div>
+
+              <!-- Round history (collapsible) -->
+              <RoundHistory
+                v-if="searchStore.rounds.length > 1"
+                :rounds="searchStore.rounds"
+                :active-round-id="currentRound?.id"
+              />
 
               <!-- Cutoff slider (only when agent scores exist) -->
               <template v-if="hasAgentScores">
@@ -445,20 +446,24 @@
                   :deep-dive-result="deepDiveResults[String(doc.id)]"
                   :dd-loading="deepDiveLoading[String(doc.id)]"
                   @feedback="(val) => searchStore.setFeedback(String(doc.id), val)"
+                  @classify="(bucket) => onDocClassify(String(doc.id), bucket)"
                   @deep-dive="triggerDeepDive(String(doc.id))"
                 />
               </div>
 
-              <!-- Completed round message -->
-              <div v-if="currentRound?.status === 'complete' && project.current_round < (project.max_rounds || 5)" class="next-round-panel">
+              <!-- Completed round — open-loop: user decides next step -->
+              <div v-if="currentRound?.status === 'complete'" class="next-round-panel">
                 <el-result icon="success" title="本轮检索完成">
                   <template #sub-title>
-                    已完成第 {{ currentRound.round_number }} 轮，下一轮将扩大时间范围继续检索
+                    已完成第 {{ currentRound.round_number }} 轮，您可以随时开始新一轮或开启监控模式
                   </template>
                   <template #extra>
-                    <el-button type="primary" :loading="searchStore.isStarting" @click="startRound">
-                      开始第 {{ project.current_round + 1 }} 轮检索
-                    </el-button>
+                    <div style="display:flex;gap:10px">
+                      <el-button type="primary" :loading="searchStore.isStarting" @click="startRound">
+                        开始新一轮检索
+                      </el-button>
+                      <el-button @click="enableMonitoring">开启每日监控</el-button>
+                    </div>
                   </template>
                 </el-result>
               </div>
@@ -477,8 +482,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useProjectStore } from '../stores/project'
 import { useSearchStore } from '../stores/search'
-import { projectApi, searchApi } from '../api/client'
-import RoundTimeline from '../components/RoundTimeline.vue'
+import { projectApi, searchApi, monitorApi } from '../api/client'
+import { useBucketStore } from '../stores/bucket'
+import BucketSidebar from '../components/bucket/BucketSidebar.vue'
+import RoundHistory from '../components/round/RoundHistory.vue'
 import DocumentCard from '../components/DocumentCard.vue'
 import SourceProgressCompact from '../components/search/SourceProgressCompact.vue'
 import AgentPlanView from '../components/pipeline/AgentPlanView.vue'
@@ -492,6 +499,7 @@ const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
 const searchStore = useSearchStore()
+const bucketStore = useBucketStore()
 const submitting = ref(false)
 const scoringCutoff = ref(7.0)
 const showBelowCutoff = ref(false)
@@ -714,12 +722,10 @@ const processingMessage = computed(() => {
   return '正在生成 AI 摘要，请稍候...'
 })
 
-const nextRoundLabel = computed(() => {
-  const round = project.value?.current_round ?? 0
-  const maxRounds = project.value?.max_rounds || 5
-  if (round >= maxRounds) return '完成全部检索'
-  return `提交反馈，开始第 ${round + 1} 轮检索`
-})
+// 已分类文档数量
+const classifiedCount = computed(() =>
+  searchStore.documents.filter((d: any) => d.bucket).length
+)
 
 const minRequired = computed(() => {
   const total = searchStore.documents.length
@@ -831,23 +837,50 @@ async function onAutoConfirmKeywords(plans: any[]) {
   }
 }
 
-async function submitFeedback() {
+async function finalizeCurrentRound() {
   submitting.value = true
   try {
-    await searchStore.submitFeedback(route.params.id as string)
-    await projectStore.fetchProject(route.params.id as string)
-    ElMessage.success('反馈已提交')
+    const pid = route.params.id as string
+    const res = await searchStore.finalizeRound(pid)
+    await projectStore.fetchProject(pid)
+    await bucketStore.fetchBuckets(pid)
+    ElMessage.success(res.message || '本轮已结束')
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.detail || '提交失败')
+    ElMessage.error(e.response?.data?.detail || '结束失败')
   } finally {
     submitting.value = false
+  }
+}
+
+async function onDocClassify(docId: string, bucket: string) {
+  const pid = route.params.id as string
+  try {
+    await searchStore.classifyDocument(pid, docId, bucket)
+    // 刷新侧边栏桶计数
+    await bucketStore.fetchBuckets(pid)
+  } catch (e: any) {
+    ElMessage.error('分类失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
+async function enableMonitoring() {
+  try {
+    const pid = route.params.id as string
+    await monitorApi.enable(pid)
+    await projectStore.fetchProject(pid)
+    ElMessage.success('已开启每日监控模式')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.detail || '开启监控失败')
   }
 }
 
 onMounted(async () => {
   const id = route.params.id as string
   await projectStore.fetchProject(id)
-  await searchStore.fetchRounds(id)
+  await Promise.all([
+    searchStore.fetchRounds(id),
+    bucketStore.fetchBuckets(id),
+  ])
   // Load current round results if applicable
   if (searchStore.currentRound && searchStore.currentRound.round_number) {
     await searchStore.loadRoundResults(searchStore.currentRound.id)
@@ -939,13 +972,7 @@ onMounted(async () => {
 /* ── Layout ── */
 .project-body { display: flex; }
 
-.sidebar {
-  width: 220px; min-height: calc(100vh - 110px);
-  background: var(--paper);
-  border-right: 1px solid var(--ink-100);
-  flex-shrink: 0;
-  position: sticky; top: 52px; align-self: flex-start;
-}
+/* BucketSidebar handles its own width/style */
 
 .main-content { flex: 1; padding: 24px 28px; max-width: 880px; }
 

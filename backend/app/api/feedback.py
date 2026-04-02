@@ -15,7 +15,7 @@ from app.models.document import Document
 from app.models.round_document import RoundDocument
 from app.models.feedback import Feedback
 from app.schemas.feedback import FeedbackSubmit, FeedbackResponse
-from app.services.progressive_search import mark_round_complete, create_next_round, activate_monitoring
+from app.services.progressive_search import mark_round_complete
 from app.services.profile_service import update_profile_from_feedbacks
 
 router = APIRouter(prefix="/api/projects", tags=["feedback"])
@@ -197,110 +197,15 @@ async def submit_feedback(
     except Exception as _he:
         logger.warning("[Harness] hook error: %s", _he)
 
-    # 标记本轮完成
+    # 标记本轮完成（legacy 端点保留向后兼容，但不再自动推进轮次）
     await mark_round_complete(round_id, db)
-
-    # 决定下一步 — Autonomous Round Controller (or fallback to fixed rounds)
-    next_round_id = None
-    next_round_number = None
-    monitoring_activated = False
-
-    from app.services.query_builder import get_max_rounds
-    from app.config import settings as _settings
-    max_rounds = project.max_rounds or get_max_rounds(project.search_config)
-
-    should_continue = project.current_round < max_rounds  # default: fixed rounds
-    decision_reason = ""
-
-    # [Harness] Autonomous round decision
-    if _settings.enable_autonomous_rounds and project.current_round >= 1:
-        try:
-            from app.harness.round_controller import AutonomousRoundController
-            from app.services.core.llm_providers import LLMProviderManager
-            from app.services.core.llm_config_store import load_llm_config
-
-            controller = AutonomousRoundController()
-            _llm = LLMProviderManager(default_ollama_host=_settings.ollama_host)
-            await load_llm_config(_llm, _settings.redis_url)
-
-            # Build round history from DB
-            all_rounds = await db.execute(
-                select(SearchRound).where(
-                    SearchRound.project_id == project_id
-                ).order_by(SearchRound.round_number)
-            )
-            round_history = []
-            for r in all_rounds.scalars().all():
-                round_history.append({
-                    "round_number": r.round_number,
-                    "doc_count": r.total_candidates or 0,
-                    "new_unique_count": r.selected_count if hasattr(r, "selected_count") else r.total_candidates or 0,
-                })
-
-            # Build feedback summary
-            from sqlalchemy import func as sa_func
-            total_rated_q = await db.execute(
-                select(sa_func.count()).select_from(Feedback).where(Feedback.project_id == project_id)
-            )
-            positive_rated_q = await db.execute(
-                select(sa_func.count()).select_from(Feedback).where(
-                    Feedback.project_id == project_id, Feedback.relevance >= 1
-                )
-            )
-            feedback_summary = {
-                "total_rated": total_rated_q.scalar() or 0,
-                "positive_rated": positive_rated_q.scalar() or 0,
-            }
-
-            decision = await controller.decide(
-                project_description=project.description,
-                completed_rounds=project.current_round,
-                max_rounds=min(max_rounds, _settings.max_autonomous_rounds),
-                round_history=round_history,
-                feedback_summary=feedback_summary,
-                llm_manager=_llm,
-            )
-            should_continue = decision.should_continue
-            decision_reason = decision.reason
-            logger.info(
-                "[Harness] Round decision: continue=%s, reason=%s, confidence=%.2f",
-                should_continue, decision_reason, decision.confidence,
-            )
-        except Exception as e:
-            logger.warning("[Harness] Autonomous decision failed, using fixed rounds: %s", e)
-            should_continue = project.current_round < max_rounds
-
-    if should_continue:
-        next_round = await create_next_round(project, db)
-        await db.commit()
-        next_round_id = next_round.id
-        next_round_number = next_round.round_number
-
-        # 当 per-source keywords 开启时，不自动 dispatch 搜索任务
-        # 由前端调用 prepareRound → confirmKeywords 流程
-        from app.config import settings as _settings
-        if not _settings.enable_per_source_keywords:
-            from app.workers.search_tasks import execute_round
-            execute_round.delay(str(next_round.id))
-
-        reason_suffix = f"（{decision_reason}）" if decision_reason else ""
-        needs_confirm = _settings.enable_per_source_keywords
-        if needs_confirm:
-            message = f"第{round_.round_number}轮反馈已保存，请确认第{next_round_number}轮关键词后开始检索"
-        else:
-            message = f"第{round_.round_number}轮反馈已保存，AI 决定继续搜索{reason_suffix}，已启动第{next_round_number}轮"
-    else:
-        await activate_monitoring(project, db)
-        monitoring_activated = True
-        reason_suffix = f"（{decision_reason}）" if decision_reason else ""
-        message = f"AI 决定停止搜索{reason_suffix}，已激活每日监控模式"
 
     return FeedbackResponse(
         saved=saved,
-        next_round_id=next_round_id,
-        next_round_number=next_round_number,
-        monitoring_activated=monitoring_activated,
-        message=message,
+        next_round_id=None,
+        next_round_number=None,
+        monitoring_activated=False,
+        message=f"第{round_.round_number}轮反馈已保存（{saved}篇）。请使用「开始新一轮」或「结束本轮」按钮继续。",
     )
 
 

@@ -13,16 +13,16 @@ MEMORY_UPDATE_PROMPT = """你是一位科研助手，负责维护用户的研究
 
 ## 本轮用户反馈
 
-### 非常相关的文献（用户评分 = 2）
+### 很相关 (very_relevant)
 {very_relevant_docs}
 
-### 相关的文献（用户评分 = 1）
+### 相关 (relevant)
 {relevant_docs}
 
-### 不确定的文献（用户评分 = 0）
+### 不确定 (uncertain)
 {uncertain_docs}
 
-### 无关的文献（用户评分 = -1）
+### 不相关 (irrelevant)
 {irrelevant_docs}
 
 ## 任务

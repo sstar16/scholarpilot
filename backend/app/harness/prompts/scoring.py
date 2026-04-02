@@ -51,6 +51,7 @@ def build_scoring_prompt(
     project_description: str,
     doc: dict,
     user_memory: str = "",
+    bucket_examples: str = "",
 ) -> tuple[str, str]:
     """
     构建评分 prompt（system + user 分离）。
@@ -59,6 +60,8 @@ def build_scoring_prompt(
     memory_section = ""
     if user_memory:
         memory_section = f"## 用户研究偏好记忆\n{user_memory[:800]}"
+    if bucket_examples:
+        memory_section += f"\n\n## 用户已分类的高相关文献（参考）\n{bucket_examples[:600]}"
 
     extra_parts = []
     if doc.get("ai_key_points"):

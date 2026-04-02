@@ -376,9 +376,10 @@ async def _execute_round_async(round_id_str: str):
                     })
 
                     scoring_agent = ScoringAgent(llm_manager=llm_manager)
+                    _scoring_desc = f"【{project.title}】{project.description}" if project.title else project.description
                     above_cutoff, below_cutoff = await scoring_agent.score_all(
                         docs=selected_docs,
-                        project_description=project.description,
+                        project_description=_scoring_desc,
                         cutoff=_cutoff,
                         user_memory=_user_memory,
                     )

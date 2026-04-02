@@ -2,8 +2,11 @@
   <div class="login-wrap">
     <el-card class="login-card" shadow="always">
       <div class="logo">
-        <h1>🔬 科研情报平台</h1>
-        <p class="subtitle">URIP · 智能文献检索与追踪</p>
+        <div class="brand">
+          <span class="brand-icon">S<span class="brand-dot">.</span>P</span>
+        </div>
+        <h1>Scholar<b>Pilot</b></h1>
+        <p class="subtitle">AI-Powered Research Intelligence</p>
       </div>
       <el-form :model="form" label-position="top" @submit.prevent="handleLogin">
         <el-form-item label="邮箱">
@@ -53,11 +56,52 @@ async function handleLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  position: relative;
+  overflow: hidden;
 }
-.login-card { width: 400px; padding: 20px; }
-.logo { text-align: center; margin-bottom: 24px; }
-.logo h1 { font-size: 24px; margin: 0; color: #303133; }
-.subtitle { color: #909399; margin: 4px 0 0; font-size: 14px; }
+.login-wrap::before {
+  content: '';
+  position: absolute;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(13,148,136,0.15) 0%, transparent 70%);
+  top: -200px; right: -100px;
+  pointer-events: none;
+}
+.login-wrap::after {
+  content: '';
+  position: absolute;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(37,99,235,0.1) 0%, transparent 70%);
+  bottom: -150px; left: -50px;
+  pointer-events: none;
+}
+.login-card {
+  width: 420px; padding: 32px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.97);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+  z-index: 1;
+}
+.logo { text-align: center; margin-bottom: 28px; }
+.brand { margin-bottom: 12px; }
+.brand-icon {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 36px; font-weight: 700;
+  color: #0f172a; letter-spacing: 2px;
+}
+.brand-dot { color: #0d9488; }
+.logo h1 {
+  font-size: 22px; margin: 0; color: #1e293b;
+  font-family: 'DM Sans', sans-serif; font-weight: 500;
+  letter-spacing: -0.3px;
+}
+.logo h1 b { font-weight: 800; color: #0f172a; }
+.subtitle {
+  color: #94a3b8; margin: 6px 0 0; font-size: 13px;
+  letter-spacing: 0.5px; font-weight: 500;
+}
 .bottom-links { text-align: center; margin-top: 16px; font-size: 14px; }
 </style>

@@ -106,10 +106,8 @@ async def _execute_round_async(round_id_str: str):
                 exclude_keys.add(f"{row[0]}:{row[1]}")
 
             # 4. 构建查询计划（加载用户配置的 LLM 用于中文描述翻译）
-            from app.services.core.llm_providers import LLMProviderManager
-            from app.services.core.llm_config_store import load_llm_config
-            llm_manager = LLMProviderManager(default_ollama_host=settings.ollama_host)
-            await load_llm_config(llm_manager, settings.redis_url)
+            from app.services.core.llm_config_store import get_llm_manager
+            llm_manager = await get_llm_manager()
 
             # 获取评分权重（从项目搜索配置）
             scoring_weights = None
@@ -543,7 +541,6 @@ async def _generate_summary_async(round_id_str: str, source: str, external_id: s
     from sqlalchemy import select, update
     from app.config import settings
     from app.models.document import Document
-    from app.services.core.llm_providers import LLMProviderManager
     from app.services.llm_summarizer import LLMSummarizer
 
     engine = create_async_engine(settings.database_url, echo=False)
@@ -558,10 +555,9 @@ async def _generate_summary_async(round_id_str: str, source: str, external_id: s
             if not doc:
                 return {"status": "skipped", "reason": "document not found"}
 
-            # 从 Redis 加载用户配置的 LLM（包含 DeepSeek/OpenAI 等）
-            from app.services.core.llm_config_store import load_llm_config
-            llm_manager = LLMProviderManager(default_ollama_host=settings.ollama_host)
-            await load_llm_config(llm_manager, settings.redis_url)
+            # 从缓存获取用户配置的 LLM
+            from app.services.core.llm_config_store import get_llm_manager
+            llm_manager = await get_llm_manager()
             summarizer = LLMSummarizer(llm_manager)
 
             doc_dict = {

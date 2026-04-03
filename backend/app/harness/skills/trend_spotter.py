@@ -116,10 +116,8 @@ async def execute(context: Dict[str, Any]) -> Dict[str, Any]:
             # 4. LLM summary (optional, only if LLM available)
             summary = None
             try:
-                from app.services.core.llm_providers import LLMProviderManager
-                from app.services.core.llm_config_store import load_llm_config
-                llm = LLMProviderManager(default_ollama_host=settings.ollama_host)
-                await load_llm_config(llm, settings.redis_url)
+                from app.services.core.llm_config_store import get_llm_manager
+                llm = await get_llm_manager()
 
                 top_rising = [r["term"] for r in rising[:10]]
                 top_overall = [t for t, _ in all_terms.most_common(10)]

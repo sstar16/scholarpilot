@@ -33,14 +33,11 @@ async def suggest_config(
     AI-assisted project creation: suggest search configuration from description.
     Suggests domains, data sources, round configuration, and scoring weights.
     """
-    from app.config import settings
-    from app.services.core.llm_providers import LLMProviderManager
-    from app.services.core.llm_config_store import load_llm_config
+    from app.services.core.llm_config_store import get_llm_manager
     import json
     import re
 
-    llm = LLMProviderManager(default_ollama_host=settings.ollama_host)
-    await load_llm_config(llm, settings.redis_url)
+    llm = await get_llm_manager()
 
     prompt = (
         "You are a research search configuration advisor. "
@@ -80,14 +77,11 @@ async def refine_search(
     Natural language search refinement: parse user instruction into config changes.
     e.g. "focus more on recent papers" → adjust recency weight, narrow year range.
     """
-    from app.config import settings
-    from app.services.core.llm_providers import LLMProviderManager
-    from app.services.core.llm_config_store import load_llm_config
+    from app.services.core.llm_config_store import get_llm_manager
     import json
     import re
 
-    llm = LLMProviderManager(default_ollama_host=settings.ollama_host)
-    await load_llm_config(llm, settings.redis_url)
+    llm = await get_llm_manager()
 
     prompt = (
         "You are parsing natural language search refinement instructions. "

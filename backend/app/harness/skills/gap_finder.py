@@ -105,10 +105,8 @@ async def execute(context: Dict[str, Any]) -> Dict[str, Any]:
             # 3. LLM gap analysis
             summary = None
             try:
-                from app.services.core.llm_providers import LLMProviderManager
-                from app.services.core.llm_config_store import load_llm_config
-                llm = LLMProviderManager(default_ollama_host=settings.ollama_host)
-                await load_llm_config(llm, settings.redis_url)
+                from app.services.core.llm_config_store import get_llm_manager
+                llm = await get_llm_manager()
 
                 top_positive = [t for t, _ in positive_terms.most_common(10)]
                 top_negative = [t for t, _ in negative_terms.most_common(10)]

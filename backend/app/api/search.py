@@ -219,12 +219,10 @@ async def prepare_round(
 
     # 构建查询计划（Agent-First）
     from app.services.query_builder import build_query, get_max_rounds
-    from app.services.core.llm_providers import LLMProviderManager
-    from app.services.core.llm_config_store import load_llm_config
+    from app.services.core.llm_config_store import get_llm_manager
     from app.models.user_profile import UserProfile
 
-    llm_manager = LLMProviderManager(default_ollama_host=settings.ollama_host)
-    await load_llm_config(llm_manager, settings.redis_url)
+    llm_manager = await get_llm_manager()
 
     # 加载用户画像 + 项目记忆
     profile_result = await db.execute(
@@ -608,11 +606,9 @@ async def finalize_round(
     if feedback_dicts and _cfg.enable_scoring_agent:
         try:
             from app.harness.memory_agent import run_memory_update
-            from app.services.core.llm_providers import LLMProviderManager
-            from app.services.core.llm_config_store import load_llm_config
+            from app.services.core.llm_config_store import get_llm_manager
 
-            _llm_mem = LLMProviderManager(default_ollama_host=_cfg.ollama_host)
-            await load_llm_config(_llm_mem, _cfg.redis_url)
+            _llm_mem = await get_llm_manager()
 
             await run_memory_update(
                 user_id=current_user.id,

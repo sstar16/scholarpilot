@@ -109,12 +109,9 @@ async def submit_feedback(
     # 用 LLM 从反馈原因中提取结构化信号（正向/负向关键词），丰富画像更新质量
     if feedback_dicts and any(fb.get("reason") for fb in feedback_dicts):
         try:
-            from app.config import settings
-            from app.services.core.llm_providers import LLMProviderManager
-            from app.services.core.llm_config_store import load_llm_config
+            from app.services.core.llm_config_store import get_llm_manager
             from app.services.llm_summarizer import LLMSummarizer
-            llm_manager = LLMProviderManager(default_ollama_host=settings.ollama_host)
-            await load_llm_config(llm_manager, settings.redis_url)
+            llm_manager = await get_llm_manager()
             summarizer = LLMSummarizer(llm_manager)
             for fb_dict in feedback_dicts:
                 if fb_dict.get("reason") and len(fb_dict["reason"]) >= 5:
@@ -149,11 +146,9 @@ async def submit_feedback(
     if feedback_dicts and _cfg.enable_scoring_agent:
         try:
             from app.harness.memory_agent import run_memory_update
-            from app.services.core.llm_providers import LLMProviderManager
-            from app.services.core.llm_config_store import load_llm_config
+            from app.services.core.llm_config_store import get_llm_manager
 
-            _llm_mem = LLMProviderManager(default_ollama_host=_cfg.ollama_host)
-            await load_llm_config(_llm_mem, _cfg.redis_url)
+            _llm_mem = await get_llm_manager()
 
             # 丰富 feedback_dicts 以包含 one_line_summary
             for fd in feedback_dicts:

@@ -53,10 +53,8 @@ async def _execute_deep_dive_async(document_id_str: str, project_id_str: str):
                 return {"error": "Project not found"}
 
             # 加载 LLM
-            from app.services.core.llm_providers import LLMProviderManager
-            from app.services.core.llm_config_store import load_llm_config
-            llm_manager = LLMProviderManager(default_ollama_host=settings.ollama_host)
-            await load_llm_config(llm_manager, settings.redis_url)
+            from app.services.core.llm_config_store import get_llm_manager
+            llm_manager = await get_llm_manager()
 
             # 加载用户记忆
             user_memory = ""

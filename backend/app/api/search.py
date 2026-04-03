@@ -351,7 +351,9 @@ async def prepare_round(
         )
     )
     await db.commit()
-    await db.refresh(round_)
+    # 重新查询 round（长时间 LLM 调用后 ORM 对象可能已脱离 session）
+    result = await db.execute(select(SearchRound).where(SearchRound.id == round_.id))
+    round_ = result.scalar_one()
 
     return KeywordGenerationResponse(
         round_id=round_.id,
@@ -458,7 +460,8 @@ async def confirm_keywords(
     from app.workers.search_tasks import execute_round
     execute_round.delay(str(round_id))
 
-    await db.refresh(round_)
+    result = await db.execute(select(SearchRound).where(SearchRound.id == round_id))
+    round_ = result.scalar_one()
     return round_
 
 

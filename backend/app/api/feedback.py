@@ -34,10 +34,10 @@ async def submit_feedback(
     round_ = await _get_round_or_404(round_id, project_id, db)
 
     # 动态最低评分数：文献数 ≤ 3 时需全部评完，否则至少评 3 篇
-    total_docs_result = await db.execute(
-        select(RoundDocument).where(RoundDocument.round_id == round_id)
-    )
-    total_docs = len(total_docs_result.scalars().all())
+    from sqlalchemy import func
+    total_docs = (await db.execute(
+        select(func.count()).select_from(RoundDocument).where(RoundDocument.round_id == round_id)
+    )).scalar() or 0
     min_required = total_docs if total_docs <= 3 else 3
     if len(req.feedbacks) < min_required:
         raise HTTPException(
@@ -49,33 +49,39 @@ async def submit_feedback(
     if round_.status != "awaiting_feedback":
         raise HTTPException(status_code=400, detail=f"当前轮次状态为 {round_.status}，不在等待反馈阶段")
 
+    # 批量预加载：本轮文档 ID 集合 + 文档详情 + 已有反馈
+    fb_doc_ids = [fb_item.document_id for fb_item in req.feedbacks]
+
+    rd_result = await db.execute(
+        select(RoundDocument.document_id).where(
+            RoundDocument.round_id == round_id,
+            RoundDocument.document_id.in_(fb_doc_ids),
+        )
+    )
+    valid_doc_ids = {row[0] for row in rd_result.all()}
+
+    doc_result = await db.execute(
+        select(Document).where(Document.id.in_(fb_doc_ids))
+    )
+    docs_map = {doc.id: doc for doc in doc_result.scalars().all()}
+
+    existing_result = await db.execute(
+        select(Feedback).where(
+            Feedback.user_id == current_user.id,
+            Feedback.round_id == round_id,
+            Feedback.document_id.in_(fb_doc_ids),
+        )
+    )
+    existing_map = {fb.document_id: fb for fb in existing_result.scalars().all()}
+
     # 保存反馈
     saved = 0
     feedback_dicts = []
     for fb_item in req.feedbacks:
-        # 检查文档是否属于本轮
-        rd_result = await db.execute(
-            select(RoundDocument).where(
-                RoundDocument.round_id == round_id,
-                RoundDocument.document_id == fb_item.document_id,
-            )
-        )
-        if not rd_result.scalar_one_or_none():
+        if fb_item.document_id not in valid_doc_ids:
             continue
 
-        # 获取文档（用于画像更新）
-        doc_result = await db.execute(select(Document).where(Document.id == fb_item.document_id))
-        doc = doc_result.scalar_one_or_none()
-
-        # 更新或创建反馈
-        existing = await db.execute(
-            select(Feedback).where(
-                Feedback.user_id == current_user.id,
-                Feedback.round_id == round_id,
-                Feedback.document_id == fb_item.document_id,
-            )
-        )
-        feedback = existing.scalar_one_or_none()
+        feedback = existing_map.get(fb_item.document_id)
         if feedback:
             feedback.relevance = fb_item.relevance
             feedback.reason = fb_item.reason
@@ -91,6 +97,7 @@ async def submit_feedback(
             db.add(feedback)
 
         saved += 1
+        doc = docs_map.get(fb_item.document_id)
         if doc:
             feedback_dicts.append({
                 "document_id": fb_item.document_id,
@@ -122,8 +129,7 @@ async def submit_feedback(
                     fb_dict["positive_signals"] = pos_sig
                     fb_dict["negative_signals"] = neg_sig
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("[feedback] 信号提取失败，画像仅用基础关键词: %s", e)
+            logger.warning("[feedback] 信号提取失败，画像仅用基础关键词: %s", e)
 
     # [Harness] PRE_FEEDBACK hook
     try:

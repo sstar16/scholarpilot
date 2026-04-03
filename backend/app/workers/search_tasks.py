@@ -28,7 +28,7 @@ def execute_round(self, round_id: str):
 
 async def _execute_round_async(round_id_str: str):
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-    from sqlalchemy import select
+    from sqlalchemy import select, update
     from app.config import settings
     from app.models.search_round import SearchRound
     from app.models.project import Project
@@ -124,9 +124,8 @@ async def _execute_round_async(round_id_str: str):
             # 加载上轮统计（Agent 决策参考）
             prev_stats = {}
             if round_.round_number > 1:
-                from sqlalchemy import select as sa_select
                 prev_round_q = await db.execute(
-                    sa_select(SearchRound).where(
+                    select(SearchRound).where(
                         SearchRound.project_id == project.id,
                         SearchRound.round_number == round_.round_number - 1,
                     )
@@ -177,41 +176,6 @@ async def _execute_round_async(round_id_str: str):
                     project_title=project.title,
                 )
 
-                # 旧路径：如果旧 Agent Planning 也开启，叠加到确定性 plan 上
-                if settings.enable_agent_planning:
-                    try:
-                        from app.harness.agent_orchestrator import SearchStrategyAgent
-                        from app.harness.tool_registry import ToolRegistry
-                        registry = ToolRegistry.get_instance()
-                        agent = SearchStrategyAgent(redis_url=settings.redis_url)
-                        from app.services.query_builder import get_max_rounds as _get_max_rounds
-                        old_plan = await agent.plan_round(
-                            project_description=project.description,
-                            round_number=round_.round_number,
-                            max_rounds=project.max_rounds or _get_max_rounds(project.search_config),
-                            profile_positive=preferred_keywords,
-                            profile_negative=excluded_keywords,
-                            tool_reliability=registry.get_reliability_report(),
-                            prev_source_stats=prev_stats,
-                            llm_manager=llm_manager,
-                        )
-                        if old_plan:
-                            query_plan = old_plan.to_query_plan(
-                                base_query=query_plan.base_query,
-                                original_chinese_query=query_plan.original_chinese_query,
-                                english_query_source=query_plan.english_query_source,
-                                cn_query_source=query_plan.cn_query_source,
-                                expanded_terms=query_plan.expanded_terms,
-                                anchor_keywords=query_plan.anchor_keywords,
-                                profile_injected_en=query_plan.profile_injected_en,
-                                profile_injected_zh=query_plan.profile_injected_zh,
-                                profile_query_extension=query_plan.profile_query_extension,
-                                language_scope=query_plan.language_scope,
-                            )
-                            _plan_source = "legacy_agent"
-                    except Exception as e:
-                        logger.warning("[Harness] Legacy agent planning failed: %s", e)
-
             # [SSE] 通知前端规划结果
             EventBus.publish_sync(round_id_str, "agent_plan", {
                 "plan_source": _plan_source,
@@ -221,7 +185,7 @@ async def _execute_round_async(round_id_str: str):
             })
 
             # 4b. 将 QueryPlan 存入 search_queries（Dev View）
-            from sqlalchemy import update as sql_update
+
             query_plan_info = {
                 "base_query": query_plan.base_query,
                 "expanded_terms": query_plan.expanded_terms,
@@ -242,7 +206,7 @@ async def _execute_round_async(round_id_str: str):
                 "anchor_keywords": query_plan.anchor_keywords,
             }
             await db.execute(
-                sql_update(SearchRound).where(SearchRound.id == round_id).values(
+                update(SearchRound).where(SearchRound.id == round_id).values(
                     search_queries=query_plan_info
                 )
             )
@@ -414,9 +378,9 @@ async def _execute_round_async(round_id_str: str):
 
             # 6. 若无文档则直接进入等待反馈（也保存 source_stats）
             if not selected_docs:
-                from sqlalchemy import update as sql_update
+    
                 await db.execute(
-                    sql_update(SearchRound).where(SearchRound.id == round_id).values(
+                    update(SearchRound).where(SearchRound.id == round_id).values(
                         source_stats=source_stats,
                         total_candidates=total_candidates,
                     )
@@ -489,9 +453,8 @@ async def _execute_round_async(round_id_str: str):
                         coord_meta[label] = result
 
                 if coord_meta:
-                    from sqlalchemy import update as sql_update2
                     await db.execute(
-                        sql_update2(SearchRound).where(SearchRound.id == round_id).values(
+                        update(SearchRound).where(SearchRound.id == round_id).values(
                             progress_message=f"搜索完成，{len(selected_docs)}篇文献，正在生成摘要... "
                                              f"[Quality: {coord_meta.get('quality', {}).get('metrics', {}).get('abstract_rate', '?')}% 有摘要]"
                         )

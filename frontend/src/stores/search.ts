@@ -106,7 +106,7 @@ export const useSearchStore = defineStore('search', () => {
       const res = await searchApi.confirmKeywords(pid, roundId, body)
       currentRound.value = res.data
       awaitingKeywordConfirmation.value = false
-      keywordPlan.value = null
+      // keywordPlan 保留（DevView 需要展示 per-source 优化结果），prepareRound 时自然覆盖
       const idx = rounds.value.findIndex((r: any) => r.id === roundId)
       if (idx >= 0) rounds.value[idx] = res.data
       startPolling(pid, roundId)

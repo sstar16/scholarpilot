@@ -10,7 +10,10 @@ import json
 import re
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any
+import logging
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class BaseLLMProvider(ABC):
@@ -66,7 +69,7 @@ class OllamaProvider(BaseLLMProvider):
                 if response.status_code == 200:
                     return response.json().get("response", "")
         except Exception as e:
-            print(f"[Ollama] 生成错误: {e}")
+            logger.warning("[Ollama] 生成错误: %s", e)
         return None
 
     async def check_connection(self) -> Dict[str, Any]:
@@ -83,7 +86,7 @@ class OllamaProvider(BaseLLMProvider):
                         "current_model": self.model
                     }
         except Exception as e:
-            print(f"[Ollama] 连接检查失败: {e}")
+            logger.warning("[Ollama] 连接检查失败: %s", e)
         return {
             "connected": False,
             "provider": "ollama",
@@ -111,7 +114,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
     async def generate(self, prompt: str, temperature: float = 0.1) -> Optional[str]:
         if not self.api_key:
-            print(f"[{self._provider_name}] 未配置API密钥")
+            logger.warning("[%s] 未配置API密钥", self._provider_name)
             return None
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -134,9 +137,9 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                     data = response.json()
                     return data["choices"][0]["message"]["content"]
                 else:
-                    print(f"[{self._provider_name}] API错误 {response.status_code}: {response.text[:200]}")
+                    logger.warning("[%s] API错误 %s: %s", self._provider_name, response.status_code, response.text[:200])
         except Exception as e:
-            print(f"[{self._provider_name}] 生成错误: {e}")
+            logger.warning("[%s] 生成错误: %s", self._provider_name, e)
         return None
 
     async def check_connection(self) -> Dict[str, Any]:
@@ -162,7 +165,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                         "current_model": self.model
                     }
         except Exception as e:
-            print(f"[{self._provider_name}] 连接检查失败: {e}")
+            logger.warning("[%s] 连接检查失败: %s", self._provider_name, e)
         return {
             "connected": False,
             "provider": self._provider_name,
@@ -185,7 +188,7 @@ class AnthropicProvider(BaseLLMProvider):
 
     async def generate(self, prompt: str, temperature: float = 0.1) -> Optional[str]:
         if not self.api_key:
-            print("[Anthropic] 未配置API密钥")
+            logger.warning("[Anthropic] 未配置API密钥")
             return None
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -211,9 +214,9 @@ class AnthropicProvider(BaseLLMProvider):
                         if block.get("type") == "text":
                             return block["text"]
                 else:
-                    print(f"[Anthropic] API错误 {response.status_code}: {response.text[:200]}")
+                    logger.warning("[Anthropic] API错误 %s: %s", response.status_code, response.text[:200])
         except Exception as e:
-            print(f"[Anthropic] 生成错误: {e}")
+            logger.warning("[Anthropic] 生成错误: %s", e)
         return None
 
     async def check_connection(self) -> Dict[str, Any]:
@@ -251,7 +254,7 @@ class AnthropicProvider(BaseLLMProvider):
                         "current_model": self.model
                     }
         except Exception as e:
-            print(f"[Anthropic] 连接检查失败: {e}")
+            logger.warning("[Anthropic] 连接检查失败: %s", e)
         return {
             "connected": False,
             "provider": "anthropic",
@@ -448,7 +451,7 @@ class LLMProviderManager:
             if pid != self.active_provider_id:
                 result = await p.generate(prompt, temperature)
                 if result:
-                    print(f"[LLM] 回退到提供商: {pid}")
+                    logger.info("[LLM] 回退到提供商: %s", pid)
                     return result
 
         return None
@@ -529,7 +532,7 @@ class LLMProviderManager:
         for pid, p_config in data.get("providers", {}).items():
             result = self.configure_provider(pid, p_config)
             if not result.get("success"):
-                print(f"[LLMManager] 恢复配置失败 {pid}: {result.get('error')}")
+                logger.warning("[LLMManager] 恢复配置失败 %s: %s", pid, result.get('error'))
         active = data.get("active_provider_id", "ollama")
         if active in self.providers:
             self.active_provider_id = active

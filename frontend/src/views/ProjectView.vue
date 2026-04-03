@@ -271,6 +271,58 @@
                       <div v-else class="dev-no-data">本轮数据未记录，请重启 worker 后新开一轮</div>
                     </div>
                   </div>
+                  <div class="dev-connector"><span>↓</span></div>
+
+                  <!-- STEP 2.5: Per-Source 查询词优化 -->
+                  <div class="dev-step" v-if="searchStore.keywordPlan?.source_plans?.length">
+                    <div class="dev-step-num" style="font-size:11px">2.5</div>
+                    <div class="dev-step-body">
+                      <div class="dev-step-title">
+                        Per-Source 查询词优化
+                        <span class="dev-step-sub">{{ searchStore.keywordPlan.source_plans.filter((p: any) => p.enabled).length }} 个源启用</span>
+                        <span v-if="searchStore.keywordPlan.generation_time_ms" class="dev-step-sub" style="margin-left:8px;color:#8b949e">{{ searchStore.keywordPlan.generation_time_ms }}ms</span>
+                      </div>
+                      <div class="dev-src-table">
+                        <div class="dev-src-thead">
+                          <span class="c-src">数据源</span>
+                          <span class="c-query">优化后查询词</span>
+                          <span class="c-count" style="min-width:50px">方式</span>
+                          <span class="c-time" style="min-width:40px">语言</span>
+                        </div>
+                        <div
+                          v-for="plan in searchStore.keywordPlan.source_plans"
+                          :key="'kw-'+plan.source_id"
+                          class="dev-src-block"
+                          :class="{ 'row-zero': !plan.enabled }"
+                        >
+                          <div class="dev-src-row">
+                            <span class="c-src">
+                              <span class="src-dot" :class="plan.enabled ? 'dot-ok' : 'dot-zero'"></span>
+                              {{ plan.display_name || plan.source_id }}
+                            </span>
+                            <span class="c-query">
+                              <code class="dev-code-sm">{{ plan.query }}</code>
+                            </span>
+                            <span class="c-count" style="min-width:50px">
+                              <el-tag size="small" :type="plan.generation_method === 'llm' ? 'success' : plan.generation_method === 'heuristic' ? 'warning' : 'info'" effect="plain" style="font-size:10px">{{ plan.generation_method === 'llm' ? 'LLM' : plan.generation_method === 'heuristic' ? '规则' : '直传' }}</el-tag>
+                            </span>
+                            <span class="c-time" style="min-width:40px">
+                              <el-tag size="small" effect="plain" style="font-size:10px">{{ plan.language === 'zh' ? '中文' : plan.language === 'multilingual' ? '多语' : 'EN' }}</el-tag>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-if="searchStore.keywordPlan.synonyms && Object.keys(searchStore.keywordPlan.synonyms).length" class="dev-kv" style="margin-top:8px">
+                        <span class="dev-k">动态同义词</span>
+                        <span class="dev-v dev-tags">
+                          <template v-for="(syns, term) in searchStore.keywordPlan.synonyms" :key="term">
+                            <el-tag size="small" type="info" effect="dark" style="font-size:10px">{{ term }}</el-tag>
+                            <el-tag v-for="s in syns" :key="s" size="small" effect="plain" class="dev-tag" style="font-size:10px">{{ s }}</el-tag>
+                          </template>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                   <div class="dev-connector"><span>↓ 并行发送</span></div>
 
                   <!-- STEP 3: 各数据源 -->

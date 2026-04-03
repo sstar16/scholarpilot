@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
@@ -6,6 +7,8 @@ import uuid
 import asyncio
 import json
 import os
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.dependencies import get_current_user
@@ -268,8 +271,7 @@ async def prepare_round(
                 # 从 agent 日志中取 rationale（存在 query_plan 的 metadata 或 agent 返回值中）
                 _plan_rationale = getattr(query_plan, '_rationale', '') or ''
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning("[prepare] QueryPlanAgent 失败: %s", e)
+            logger.warning("[prepare] QueryPlanAgent 失败: %s", e)
             query_plan = None
 
     # Fallback
@@ -542,9 +544,6 @@ async def finalize_round(
     db: AsyncSession = Depends(get_db),
 ):
     """用户手动结束本轮 — 触发 Memory Agent + Profile 更新"""
-    import logging
-    logger = logging.getLogger(__name__)
-
     project = await _get_project_or_404(project_id, current_user.id, db)
     round_ = await _get_round_or_404(project_id, round_id, current_user.id, db)
 

@@ -74,7 +74,7 @@
           <el-row :gutter="16">
             <el-col :span="12">
               <el-form-item label="Max Tokens（最大输出长度）">
-                <el-input-number v-model="form.max_tokens" :min="500" :max="128000" :step="1000" style="width:100%" />
+                <el-input-number v-model="form.max_tokens" :min="1" :max="128000" :step="1" style="width:100%" />
               </el-form-item>
             </el-col>
             <el-col :span="12">

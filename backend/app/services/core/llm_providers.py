@@ -100,7 +100,10 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         self.base_url = config.get("base_url", "https://api.openai.com/v1")
         self.model = config.get("model", "gpt-4o-mini")
         self._provider_name = config.get("provider_name", "openai")
-        self.max_tokens = config.get("max_tokens", 10000)
+        self.max_tokens = config.get("max_tokens", 4096)
+        # DeepSeek max_tokens 上限 8192
+        if "deepseek" in self.base_url.lower() and self.max_tokens > 8192:
+            self.max_tokens = 8192
 
     @property
     def provider_name(self) -> str:

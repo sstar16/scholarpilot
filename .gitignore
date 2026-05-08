@@ -1,0 +1,83 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# 环境变量（API Key 绝对不能提交！）
+.env
+.env.local
+*.env
+.env.*
+
+# 数据库文件
+*.db
+*.sqlite
+# 顶级 data/ 目录（PG/Docker volume 落地点）；不要匹配 client/src/data 等业务源码路径
+/data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+logs/
+*.log
+
+# Claude Code 缓存
+.claude/
+
+# 专门学习的其他github项目
+other-projects/
+
+# 服务器端口 override（每台服务器不同，不提交）
+docker-compose.override.yml
+
+# Playwright MCP 临时目录
+.playwright-mcp/
+
+# Node modules
+**/node_modules/
+
+# 本地工具配置
+.mcp.json
+.serena/
+
+# Plugin 缓存
+.omc/
+.superpowers/
+
+# Service Account 密钥
+**/secrets/
+
+# Cloudflare Origin Certificate 私钥（生产端手动放置，**严禁入库**）
+nginx/certs/
+
+# 设计素材（本地参考用，非源码；docs/design-brief 下的摘要版已入库）
+/ScholarPilot Design System/
+/ScholarPilot Design System.zip
+# 本地杂物：诊断脚本 / 参考文档 / 服务器摸底，不进 git
+other_things/
+
+# Experiment output / dev scratch
+tmp/
+
+# Client build artifacts
+client/dist
+client/src-tauri/target
+client/src-tauri/gen
+client/node_modules
+longwork.txt
+sp-api-deploy.tar.gz
+client/test-results/
+client/playwright-report/

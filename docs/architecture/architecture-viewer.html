@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ScholarPilot 架构可视化</title>
+<style>
+  :root {
+    --bg: #fdfcf8;
+    --ink-900: #1a1a1a;
+    --ink-700: #444;
+    --ink-400: #888;
+    --gold: #c6ac57;
+    --line: rgba(20, 20, 20, 0.08);
+    --paper: #fff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink-900);
+    line-height: 1.5;
+    background:
+      linear-gradient(rgba(120,100,80,0.04) 1px, transparent 1px) 0 0/32px 32px,
+      linear-gradient(90deg, rgba(120,100,80,0.04) 1px, transparent 1px) 0 0/32px 32px,
+      var(--bg);
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    min-height: 100vh;
+  }
+  aside {
+    background: var(--paper);
+    border-right: 1px solid var(--line);
+    padding: 28px 22px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  aside .brand {
+    font-size: 11px;
+    letter-spacing: 0.35em;
+    color: var(--gold);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  aside h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+    letter-spacing: -0.3px;
+  }
+  aside .sub {
+    font-size: 12px;
+    color: var(--ink-400);
+    margin-bottom: 24px;
+  }
+  aside h2 {
+    font-size: 11px;
+    color: var(--ink-400);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin: 24px 0 10px;
+    font-weight: 600;
+  }
+  aside ul { list-style: none; padding: 0; margin: 0; }
+  aside li button {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    padding: 9px 12px;
+    font-size: 13px;
+    color: var(--ink-700);
+    cursor: pointer;
+    border-radius: 6px;
+    margin: 1px 0;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  aside li button:hover {
+    background: rgba(198, 172, 87, 0.08);
+    color: var(--ink-900);
+  }
+  aside li button.active {
+    background: rgba(198, 172, 87, 0.18);
+    color: var(--ink-900);
+    font-weight: 600;
+  }
+  main {
+    padding: 40px 56px;
+    max-width: 1400px;
+    overflow-x: auto;
+  }
+  main h1 {
+    font-size: 28px;
+    margin: 0 0 6px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+  }
+  main .desc {
+    color: var(--ink-700);
+    font-size: 14px;
+    margin: 0 0 28px;
+    max-width: 800px;
+  }
+  main .desc code {
+    background: rgba(198, 172, 87, 0.12);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 12px;
+  }
+  .diagram {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 28px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  }
+  .legend {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-top: 24px;
+    font-size: 13px;
+  }
+  .legend h3 {
+    font-size: 13px;
+    margin: 0 0 8px;
+    color: var(--ink-400);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .legend p { margin: 4px 0; color: var(--ink-700); }
+  .legend code {
+    background: rgba(198, 172, 87, 0.12);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 12px;
+  }
+  .footer-hint {
+    margin-top: 40px;
+    font-size: 12px;
+    color: var(--ink-400);
+    text-align: center;
+  }
+  /* mermaid 容器宽度自适应 */
+  .mermaid { text-align: center; min-height: 100px; }
+  .mermaid svg { max-width: 100%; height: auto; }
+  /* 隐藏未激活章节 */
+  .panel { display: none; }
+  .panel.active { display: block; animation: fadeIn 0.25s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <div class="brand">— SCHOLARPILOT —</div>
+    <h1>架构可视化</h1>
+    <div class="sub">基于 commit <code style="font-size:11px">2f695c7</code></div>
+
+    <h2>速览</h2>
+    <ul>
+      <li><button data-target="overview" class="active">系统全景</button></li>
+    </ul>
+
+    <h2>对话流程</h2>
+    <ul>
+      <li><button data-target="state">状态机 (7 状态)</button></li>
+      <li><button data-target="route">路由分派</button></li>
+      <li><button data-target="create">场景: 创建项目</button></li>
+      <li><button data-target="collab">场景: 协作研究</button></li>
+    </ul>
+
+    <h2>检索流水线</h2>
+    <ul>
+      <li><button data-target="dag">PhaseRunner DAG</button></li>
+      <li><button data-target="loop">PhaseRunner 内部循环</button></li>
+      <li><button data-target="answernow">Answer Now 中断</button></li>
+    </ul>
+
+    <h2>Agent 与数据</h2>
+    <ul>
+      <li><button data-target="agents">10 个 Agent 调用关系</button></li>
+      <li><button data-target="paradigm">Supervisor vs Workflow</button></li>
+      <li><button data-target="memory">Memory 读写时机</button></li>
+      <li><button data-target="er">DB 关键表 ER</button></li>
+      <li><button data-target="sse">SSE 推送链</button></li>
+    </ul>
+  </aside>
+
+  <main>
+    <!-- 系统全景 -->
+    <section class="panel active" data-id="overview">
+      <h1>系统全景</h1>
+      <p class="desc">9 个 docker 服务怎么协作。生产 HTTPS 走 Cloudflare Tunnel（主动 outbound 长连），源站不需要对外暴露端口。本地开发 <code>cloudflared</code> 服务在 <code>profiles: [prod]</code> 下不启动。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart TB
+    subgraph external["🌐 外部"]
+      UU["用户浏览器"]
+      CFE["Cloudflare Edge"]
+    end
+    subgraph host["🖥️ 阿里云 / 本地 (docker network)"]
+      CFD["cloudflared\n(profile: prod)"]
+      NG["nginx :80/:443"]
+      FE["frontend Vue3 dist"]
+      DT["devtools :3001"]
+      BE["backend FastAPI :8000"]
+      WK["worker celery"]
+      BT["beat 调度"]
+      FL["flower :5555"]
+      PG[(postgres
+pgvector/pg16)]
+      RD[(redis:7-alpine)]
+    end
+    UU -->|HTTPS scholarpilot.top| CFE
+    CFE -->|Tunnel| CFD
+    CFD --> NG
+    UU -.localhost.-> NG
+    NG -->|/api/*| BE
+    NG -->|/| FE
+    NG -.devtools.-> DT
+    BE <-->|asyncpg| PG
+    WK <-->|asyncpg| PG
+    BE <-->|asyncio| RD
+    WK <-->|asyncio| RD
+    BT -.schedule.-> WK
+    FL -.monitor.-> WK
+    BE -->|dispatch| RD --> WK
+    style CFD fill:#fef3c7,stroke:#d97706
+    style NG fill:#dbeafe,stroke:#2563eb
+    style BE fill:#d1fae5,stroke:#059669
+    style WK fill:#d1fae5,stroke:#059669
+    style PG fill:#fce7f3,stroke:#db2777
+    style RD fill:#fce7f3,stroke:#db2777
+        </pre>
+      </div>
+      <div class="legend">
+        <h3>关键约定</h3>
+        <p>· <code>backend</code> 用 volume 挂载 <code>./backend/app</code>，改 Python 代码 <code>restart</code> 即生效</p>
+        <p>· <code>frontend / devtools</code> 无 volume，必须 <code>docker compose build</code> 才生效</p>
+        <p>· 生产源站入站全关，靠 Tunnel 出站，根治"未备案 → 阿里云骨干 403 / CF 回源 525"两个老坑</p>
+      </div>
+    </section>
+
+    <!-- 状态机 -->
+    <section class="panel" data-id="state">
+      <h1>对话状态机 (7 状态)</h1>
+      <p class="desc"><code>ConversationSession.current_state</code> 决定<strong>当前能做什么</strong>。一旦进流程必须走完或显式退出，中途不能切。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+stateDiagram-v2
+    [*] --> idle: 创建 session
+    idle --> intent_analysis: 描述研究方向
+    intent_analysis --> intent_confirmation: ResearchDecisionAgent 出意图
+    intent_analysis --> idle: 不是研究请求
+    intent_confirmation --> search_mode_selection: 用户点确认
+    intent_confirmation --> idle: 用户取消
+    search_mode_selection --> keyword_confirmation: 选 static_db/api/hybrid
+    search_mode_selection --> idle: 退出
+    keyword_confirmation --> [*]: dispatch Celery
+    keyword_confirmation --> idle: ExitButton
+    idle --> collaboration_selecting: 点  (文献库非空)
+    collaboration_selecting --> collaboration_active: 选完文献
+    collaboration_selecting --> idle: 取消
+    collaboration_active --> idle: 退出协作
+    note right of idle: 自由聊天 + 三大功能入口
+    note right of keyword_confirmation: 只能编辑/确认 source_plans
+    note left of collaboration_active: 只能问协作问题
+        </pre>
+      </div>
+    </section>
+
+    <!-- 路由分派 -->
+    <section class="panel" data-id="route">
+      <h1>send_message 路由分派</h1>
+      <p class="desc">每条用户消息进入 <code>conversation.py:287</code> 后，先看 <code>session.current_state</code> 决定走哪条 handler。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart TD
+    In["用户消息 POST /message"]
+    In --> S{"current_state?"}
+    S -->|idle + 没绑项目| RDA["_run_intent_analysis()"]
+    S -->|idle + 已绑项目| Router["_run_intent_router()"]
+    S -->|intent_confirmation| BlockA["等用户点确认卡"]
+    S -->|search_mode_selection| BlockB["等用户选 dialog"]
+    S -->|keyword_confirmation| BlockC["等用户确认气泡"]
+    S -->|collaboration_active| Collab["ResearchAgent.answer()"]
+    RDA --> RDAOut["1 次 LLM\n同时出 intent + query_plan"]
+    RDAOut -.失败.-> INA["IntentAnalysisAgent\n(降级,只出 intent)"]
+    RDAOut --> CreateProj["创建 Project\n+ PROJECT_CREATE hook"]
+    Router --> Classify{"intent_type?"}
+    Classify -->|search_request| Prepare["新一轮检索"]
+    Classify -->|analyze_documents| Scope["弹文献选择气泡"]
+    Classify -->|research_qa| RA["ResearchAgent"]
+    Classify -->|upload| UI["回复'用上传按钮'"]
+    Classify -->|general_chat| Chat["普通对话"]
+    style RDA fill:#dbeafe
+    style Router fill:#dbeafe
+    style INA fill:#fee2e2
+        </pre>
+      </div>
+    </section>
+
+    <!-- 场景：创建项目 -->
+    <section class="panel" data-id="create">
+      <h1>场景：创建项目</h1>
+      <p class="desc">从对话第一句到选好检索模式的完整时序。注意 ResearchDecisionAgent 一次 LLM 调用同时输出 <strong>意图判定 + query_plan</strong>，节省后续一次调用。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant FE as ChatPanel
+    participant API as conversation.py
+    participant RDA as ResearchDecisionAgent
+    participant LLM as LLM Manager
+    participant DB as Postgres
+    U->>FE: "我想研究 Transformer 推理加速"
+    FE->>API: POST /message
+    Note over API: state=idle & 没绑项目
+    API->>RDA: decide(input)
+    RDA->>LLM: 1 次调用
+    LLM-->>RDA: intent + query_plan
+    alt LLM 成功
+      RDA-->>API: 完整 intent
+    else LLM 失败
+      API->>API: 降级 IntentAnalysisAgent
+    end
+    API->>DB: Project (status=draft) / + search_config.precomputed_plan
+    API->>DB: state='intent_confirmation'
+    API-->>FE: 意图确认气泡
+    U->>FE: 点确认
+    FE->>API: POST /confirm
+    API->>DB: project.status='active' / state='search_mode_selection'
+    API-->>FE: 模式选择卡
+        </pre>
+      </div>
+    </section>
+
+    <!-- 场景：协作研究 -->
+    <section class="panel" data-id="collab">
+      <h1>场景：协作研究</h1>
+      <p class="desc">在<strong>已有文献分类</strong>的项目里，用户提问触发 IntentRouter → ResearchAgent，基于已分类文献做深度问答。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant FE as ChatPanel
+    participant API as conversation.py
+    participant IR as IntentRouter
+    participant CO as collaboration.py
+    participant RA as ResearchAgent
+    participant DB as Postgres
+    U->>FE: "帮我分析这些文献的核心矛盾"
+    FE->>API: POST /message (已绑项目)
+    API->>IR: 路由分类
+    IR-->>API: intent_type='analyze_documents'
+    API->>CO: suggest_scope(sid)
+    CO->>DB: 读 very_relevant 桶
+    API-->>FE: 选文献气泡
+    Note over API: state='collaboration_selecting'
+    U->>FE: 勾选 5 篇 → 确认
+    FE->>API: POST /collaboration/start
+    API->>DB: state='collaboration_active'
+    loop 协作问答
+      U->>FE: 提问
+      FE->>API: POST /message
+      API->>RA: answer(question, papers, memory, history)
+      RA-->>API: {answer, citations}
+      API-->>FE: 答案 + citation 跳转
+    end
+    U->>FE: 退出
+    FE->>API: POST /collaboration/exit
+    API->>DB: state='idle'
+        </pre>
+      </div>
+    </section>
+
+    <!-- DAG -->
+    <section class="panel" data-id="dag">
+      <h1>PhaseRunner DAG (11 phase)</h1>
+      <p class="desc"><code>execute_round(round_id)</code> Celery 任务里 PhaseRunner 按拓扑序跑 11 个 phase。蓝 = 调 LLM；黄 = 可中断（Answer Now）；绿 = IO 操作。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart TD
+    Start(["execute_round"])
+    Start --> P1
+    P1["1. LoadRound"]
+    P2["2. BuildDedup\n读历史"]
+    P3["3. LoadMemory\n(用户md+项目md)"]
+    P4["4. PlanQuery \nQueryPlanAgent\n失败→build_query()"]
+    P5["5. LoadConfirmedKeywords\n用户编辑过的"]
+    P6["6. ApplyMode\n过滤 sources"]
+    P7["7. Fetch \n14 源 asyncio.gather\ncan_interrupt"]
+    P8["8. Rerank\ncan_interrupt"]
+    P9["9. Score \nScoringAgent\n失败→relevance_engine\ncan_interrupt"]
+    P10["10. SaveDocs"]
+    P11["11. DispatchSummaries\nchord(摘要×N)\ncan_interrupt"]
+    Done(["round.status='complete'"])
+    P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8 --> P9 --> P10 --> P11 --> Done
+    classDef llm fill:#dbeafe,stroke:#2563eb
+    classDef interruptible fill:#fef3c7,stroke:#d97706
+    classDef io fill:#d1fae5,stroke:#059669
+    class P4,P9 llm
+    class P7,P8,P9,P11 interruptible
+    class P1,P3,P5,P10 io
+        </pre>
+      </div>
+    </section>
+
+    <!-- 内部循环 -->
+    <section class="panel" data-id="loop">
+      <h1>PhaseRunner 内部循环</h1>
+      <p class="desc">每个 phase 执行前检查中断标志 → 检查 <code>skip_if(ctx)</code> → 触发 PRE hook → 执行 → 触发 POST hook → 推 SSE。<code>skip_if</code> 是 commit <code>1d7918f</code> 新增的声明式跳过接口。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart TD
+    Start(["PhaseRunner.run(ctx)"])
+    Start --> Loop{"还有 phase?"}
+    Loop -->|没有| End(["return ctx"])
+    Loop -->|有| AN{"can_interrupt?"}
+    AN -->|是| CheckInt{"Redis interrupt 标志?"}
+    AN -->|否| Skip
+    CheckInt -->|是| Partial["synthesize_partial\n+ deliver"]
+    CheckInt -->|否| Skip
+    Partial --> Abort(["raise PhaseAborted"])
+    Skip["phase.skip_if(ctx)?"] --> SkipDecide{"True?"}
+    SkipDecide -->|True| LogSkip["artifacts[name]=None"]
+    SkipDecide -->|False| PreHook
+    LogSkip --> Loop
+    PreHook["fire PRE_NAME hook"]
+    PreHook --> SSE1["SSE start progress"]
+    SSE1 --> Exec["await execute(ctx)"]
+    Exec --> Res{"结果?"}
+    Res -->|return dict| Save["artifacts[name] = output"]
+    Res -->|raise PhaseSkipped| LogSkip2["artifacts[name]=None"]
+    Res -->|raise PhaseAborted| Abort
+    Res -->|raise Exception| Crash(["round failed"])
+    Save --> PostHook["fire POST_NAME hook"]
+    LogSkip2 --> SSE2
+    PostHook --> SSE2["SSE end progress"]
+    SSE2 --> Loop
+    style Partial fill:#fef3c7
+    style Abort fill:#fef3c7
+    style Crash fill:#fee2e2
+    style PreHook fill:#fce7f3
+    style PostHook fill:#fce7f3
+        </pre>
+      </div>
+    </section>
+
+    <!-- Answer Now -->
+    <section class="panel" data-id="answernow">
+      <h1>Answer Now 中断</h1>
+      <p class="desc">长检索（30-60s）中点"现在就给我答复"，让 PhaseRunner 在下一个 <code>can_interrupt</code> phase 前停下，<code>partial_synthesizer</code> 用已收集的文档合成简短答案。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+sequenceDiagram
+    participant U as 用户
+    participant FE as ChatPanel
+    participant API as search.py
+    participant RD as Redis
+    participant W as Worker (PhaseRunner)
+    participant PS as partial_synthesizer
+    participant LLM
+    Note over W: 已 P1-P6, 在 P7 FetchPhase
+    U->>FE: 点 Answer Now
+    FE->>API: POST /rounds/{id}/answer-now
+    API->>RD: SET interrupt_flag:{rid} EX 60
+    Note over W: P7 即将进入下一 phase
+    W->>RD: GET interrupt_flag
+    RD-->>W: "1"
+    W->>W: docs_so_far = collect (score>rerank>fetch)
+    W->>PS: synthesize_partial(docs, stage)
+    PS->>LLM: 1 次 "基于这些先答"
+    LLM-->>PS: 部分答案
+    PS->>API: deliver_partial_answer
+    API->>RD: DEL interrupt_flag
+    W->>W: raise PhaseAborted
+    Note over W: round.status='complete' (不是 failed)
+    API-->>FE: SSE: partial_answer
+        </pre>
+      </div>
+    </section>
+
+    <!-- Agent 关系 -->
+    <section class="panel" data-id="agents">
+      <h1>10 个 Agent 调用关系</h1>
+      <p class="desc">所有 agent <strong>互不调用</strong>（设计有意为之），只由 API / Worker / PhaseRunner / Hook 这 4 类调用方触发。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart TD
+    User1(["用户消息"]) --> ConvAPI["conversation.py"]
+    ConvAPI -->|创建项目| RDA["ResearchDecisionAgent"]
+    RDA -.失败.-> IA["IntentAnalysisAgent"]
+    User2(["确认关键词"]) --> SearchAPI["search.py"] --> Worker["Celery"] --> PR["PhaseRunner"]
+    PR -->|PlanQuery| QPA["QueryPlanAgent"]
+    QPA -.失败.-> BQ["build_query()"]
+    PR -->|Score| SA["ScoringAgent"]
+    SA -.失败.-> RE["relevance_engine"]
+    User3(["分类反馈"]) --> FBApi["feedback.py"]
+    FBApi -->|hook POST_FEEDBACK| MA["MemoryAgent"]
+    User4(["协作问答"]) --> CollabAPI["collaboration.py"]
+    CollabAPI --> RA["ResearchAgent"]
+    CollabAPI -->|协作前探针| PA["ProbeAgent"]
+    User5(["上传 PDF"]) --> ImpAPI["document_import.py"] --> ImpW["worker"] --> DIA["DocImportAgent"]
+    User7(["/memory "]) --> MemAPI["memory.py"] --> MMA["MemoryMarkdownAgent"]
+    classDef agent fill:#dbeafe,stroke:#2563eb,stroke-width:2px
+    classDef fb fill:#fee2e2,stroke:#dc2626
+    class RDA,IA,QPA,SA,RA,PA,MA,MMA,DIA agent
+    class BQ,RE fb
+        </pre>
+      </div>
+    </section>
+
+    <!-- 范式对比 -->
+    <section class="panel" data-id="paradigm">
+      <h1>Supervisor vs Workflow</h1>
+      <p class="desc">为什么 ScholarPilot 不用 LangGraph 那种"主 LLM agent 路由 + 子 agent 工作"的范式？因为核心流程是<strong>强结构 workflow</strong>（项目→关键词→检索→反馈），用 LLM 做路由会带来不必要的 token 成本、延迟和不可预测性。Anthropic 自己的 "Building effective agents" 也强调 "Don't use agents when workflows suffice"。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart LR
+    subgraph "Supervisor (LangGraph 风格)"
+      S1["主 LLM Agent\n(理解+决策+调度)"]
+      S1 -->|tool call| W1[Worker A]
+      S1 -->|tool call| W2[Worker B]
+      S1 -->|tool call| W3[Worker C]
+      W1 --> S1
+      W2 --> S1
+      W3 --> S1
+    end
+    subgraph "ScholarPilot (workflow + agent)"
+      SM["状态机\n(Python 代码)"]
+      SM --> SP1["Phase A → Agent A"]
+      SP1 --> SP2["Phase B → Agent B"]
+      SP2 --> SP3["Phase C → Agent C"]
+    end
+        </pre>
+      </div>
+      <div class="legend">
+        <h3>对比要点</h3>
+        <p>· 路由决策：Supervisor 是 LLM 推理（每条消息 +1 LLM 调用）；ScholarPilot 是 Python switch（确定 + 零成本）</p>
+        <p>· 输出可预测性：Supervisor 可能跑偏到不该走的路径；ScholarPilot 路径固定</p>
+        <p>· 适用场景：Supervisor 适合开放助手 / 编码代理；ScholarPilot 适合强结构科研流程</p>
+      </div>
+    </section>
+
+    <!-- Memory -->
+    <section class="panel" data-id="memory">
+      <h1>双层 Markdown Memory 读写时机</h1>
+      <p class="desc">用户级（跨项目共享）+ 项目级（仅本项目）双层 markdown。每轮检索开头读，反馈后由 MemoryAgent 改写。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart LR
+    subgraph "读 (每轮检索开头)"
+      LM["LoadMemoryPhase"]
+      LM --> UM[("user_memory.markdown")]
+      LM --> PM[("project_memory.markdown")]
+      LM --> LP[("user_profile.memory_text\n(legacy)")]
+      UM --> Combine["build_combined\n_memory_for_agents()"]
+      PM --> Combine
+      LP --> Combine
+      Combine --> Out["combined_md"]
+      Out -.prompt 注入.-> QPA["QueryPlanAgent"]
+      Out -.prompt 注入.-> SA["ScoringAgent"]
+      Out -.prompt 注入.-> RA["ResearchAgent"]
+    end
+    subgraph "写 (用户分类后)"
+      User["用户分桶"] --> FB["feedback.py"]
+      FB -->|hook POST_FEEDBACK| MA["MemoryAgent.update_memory()"]
+      MA -->|LLM 改写| New["new_md"]
+      New -->|version+1| UM2[("user_memory")]
+    end
+    style Combine fill:#fef3c7
+    style MA fill:#dbeafe
+        </pre>
+      </div>
+    </section>
+
+    <!-- ER -->
+    <section class="panel" data-id="er">
+      <h1>DB 关键表 ER</h1>
+      <p class="desc">本图突出主关系，忽略时间戳和不重要字段。完整 schema 见 <code>backend/app/models/*.py</code>，迁移在 <code>alembic/versions/</code>（0001 → 0022）。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+erDiagram
+    USER ||--o{ PROJECT : owns
+    USER ||--|| USER_PROFILE : has
+    USER ||--o{ USER_MEMORY : has
+    PROJECT ||--o{ PROJECT_MEMORY : has
+    PROJECT ||--o{ SEARCH_ROUND : runs
+    PROJECT ||--o{ DOCUMENT : refs
+    PROJECT ||--o{ MONITOR_JOB : monitors
+    PROJECT ||--o{ DOCUMENT_CLASSIFICATION : has
+    PROJECT ||--o{ CONVERSATION_SESSION : "1+ sessions"
+    SEARCH_ROUND ||--o{ ROUND_DOCUMENT : produces
+    DOCUMENT ||--o{ ROUND_DOCUMENT : linked
+    DOCUMENT ||--o{ DOCUMENT_CLASSIFICATION : classified
+    CONVERSATION_SESSION ||--o{ MESSAGE : contains
+    USER {
+      uuid id PK
+      string email
+      bool is_admin
+    }
+    PROJECT {
+      uuid id PK
+      string title
+      json search_config
+      int current_round
+    }
+    SEARCH_ROUND {
+      uuid id PK
+      int round_number
+      string status
+      json source_stats
+    }
+    DOCUMENT {
+      uuid id PK
+      string title
+      text ai_summary
+      json ai_key_points
+      float relevance_score
+    }
+    CONVERSATION_SESSION {
+      uuid id PK
+      string current_state
+      json messages
+    }
+        </pre>
+      </div>
+    </section>
+
+    <!-- SSE -->
+    <section class="panel" data-id="sse">
+      <h1>SSE 推送链 (含 token 实时追踪)</h1>
+      <p class="desc">前端 <code>useSessionSSE</code> 订阅 session 频道；<code>useChatTokenTracker</code>（commit <code>cb5e421</code> 抽出）专门处理 token 实时累计。</p>
+      <div class="diagram">
+        <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant FE as 前端
+    participant API as FastAPI
+    participant RD as Redis
+    participant W as Worker
+    FE->>API: GET /api/stream/session/{sid}
+    API->>RD: SUBSCRIBE round:* + session:*
+    Note over W: 跑 PhaseRunner
+    W->>RD: PUBLISH round:{rid} {round_status, progress}
+    RD-->>API: msg
+    API-->>FE: data: {...}
+    FE->>FE: 进度条更新
+    W->>RD: PUBLISH session:{sid} {session_message_appended}
+    RD-->>API: msg
+    API-->>FE: data: {...}
+    FE->>FE: appendIncomingMessage
+    Note over W: ScoringAgent 内部
+    W->>RD: PUBLISH llm_call_start
+    API-->>FE: data
+    FE->>FE: useChatTokenTracker: / turnStartTime = now
+    W->>RD: PUBLISH llm_usage_delta {input,output}
+    API-->>FE: data
+    FE->>FE: turnInputTokens += ... / turnModel = ...
+    Note over U: AI 回复完
+    FE->>FE: onTurnEnd 持久化 token 到消息 metadata
+        </pre>
+      </div>
+    </section>
+
+    <div class="footer-hint">
+      点左侧切换图 · 浏览器双击此 HTML 即可查看 · 基于 commit 2f695c7
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+  // 不用 startOnLoad，自己控制渲染时机（panel 切换时按需触发，渲染失败显示源码 + 错误）
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    securityLevel: 'loose',
+    themeVariables: {
+      primaryColor: '#fdfcf8',
+      primaryTextColor: '#1a1a1a',
+      primaryBorderColor: '#c6ac57',
+      lineColor: '#888',
+      secondaryColor: '#dbeafe',
+      tertiaryColor: '#fef3c7',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif',
+      fontSize: '14px',
+    },
+    flowchart: { curve: 'basis', htmlLabels: true, useMaxWidth: true },
+    sequence: { useMaxWidth: true, mirrorActors: false },
+    er: { useMaxWidth: true },
+  });
+
+  /**
+   * 渲染指定 panel 内还没渲染过的 mermaid 块。
+   * 用 data-rendered=true|error 标记避免重复。失败时显示错误 + 源码方便排查。
+   */
+  async function renderPanelDiagrams(panel) {
+    const blocks = panel.querySelectorAll('pre.mermaid:not([data-rendered])');
+    for (let i = 0; i < blocks.length; i++) {
+      const el = blocks[i];
+      const code = el.textContent.trim();
+      const id = `mmd_${Date.now()}_${i}`;
+      try {
+        const { svg } = await mermaid.render(id, code);
+        el.innerHTML = svg;
+        el.setAttribute('data-rendered', 'true');
+      } catch (err) {
+        console.error('[mermaid] render failed:', err);
+        el.innerHTML = `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:14px;color:#991b1b;font-family:monospace;font-size:12px;white-space:pre-wrap;text-align:left;"><strong>mermaid render failed:</strong>
+${(err && err.message ? err.message : String(err)).replace(/</g,'&lt;')}
+<hr style="margin:8px 0;border:none;border-top:1px dashed #fca5a5">
+<strong>source:</strong>
+${code.replace(/</g,'&lt;')}</div>`;
+        el.setAttribute('data-rendered', 'error');
+      }
+    }
+  }
+
+  // 侧栏切换 + 按需渲染
+  const buttons = document.querySelectorAll('aside button[data-target]');
+  const panels = document.querySelectorAll('.panel');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', async () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const target = btn.dataset.target;
+      const panel = document.querySelector(`.panel[data-id="${target}"]`);
+      if (panel) {
+        panel.classList.add('active');
+        await renderPanelDiagrams(panel);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  // 首次加载：渲染当前激活的 panel
+  document.addEventListener('DOMContentLoaded', () => {
+    const active = document.querySelector('.panel.active');
+    if (active) renderPanelDiagrams(active);
+  });
+</script>
+</body>
+</html>

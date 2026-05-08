@@ -1,0 +1,137 @@
+# sp-api docker-compose（HK client-only backend）
+#
+# 与现有 docker-compose.yml（CN）完全隔离：独立 DB / Redis / 端口 / project name。
+# 启动：docker compose -f docker-compose.sp-api.yml up -d
+# 生产：docker compose -f docker-compose.sp-api.yml --profile prod up -d
+#
+# 不含：frontend / nginx / devtools / flower（client-only 不需要 web UI）
+
+services:
+  sp-api-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sp-api-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sp_api}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-sp_api}
+    volumes:
+      - sp-api-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sp_api}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  sp-api-redis:
+    image: redis:7-alpine
+    container_name: sp-api-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - sp-api-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  sp-api-backend:
+    build:
+      context: ./sp-api
+    container_name: sp-api-backend
+    restart: unless-stopped
+    depends_on:
+      sp-api-postgres:
+        condition: service_healthy
+      sp-api-redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sp_api}:${POSTGRES_PASSWORD:-changeme}@sp-api-postgres:5432/${POSTGRES_DB:-sp_api}
+      REDIS_URL: redis://sp-api-redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change_me_in_production}
+      MIN_CLIENT_VERSION: ${MIN_CLIENT_VERSION:-0.2.0}
+      DISABLE_FULLTEXT_BROWSER: "1"
+      DISABLED_SOURCES: ${DISABLED_SOURCES:-semantic_scholar,uspto,biorxiv,medrxiv}
+      LENS_API_TOKEN: ${LENS_API_TOKEN:-}
+      EPO_CONSUMER_KEY: ${EPO_CONSUMER_KEY:-}
+      EPO_CONSUMER_SECRET: ${EPO_CONSUMER_SECRET:-}
+      PATENTHUB_API_TOKEN: ${PATENTHUB_API_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
+      UNPAYWALL_EMAIL: ${UNPAYWALL_EMAIL:-scholarpilot@example.com}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-4}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-30}
+    # 2026-05-08：command 用 list form 避免 YAML folded scalar 把 16-indent 行
+    # 视为 "more indented" 保留换行，导致 bash 把 `--proxy-headers` 当成独立命令
+    command:
+      - bash
+      - -lc
+      - alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-4} --proxy-headers --forwarded-allow-ips='*'
+    # 2026-05-08：sp-api 不再落盘 PDF（客户端 Tauri Rust 自管），所以移除
+    # sp-api-pdfs volume mount。volume 名定义保留在底部以备数据清理时手动用。
+    ports:
+      - "${SP_API_PORT:-18000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  sp-api-worker:
+    build:
+      context: ./sp-api
+    container_name: sp-api-worker
+    restart: unless-stopped
+    depends_on:
+      sp-api-backend:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sp_api}:${POSTGRES_PASSWORD:-changeme}@sp-api-postgres:5432/${POSTGRES_DB:-sp_api}
+      REDIS_URL: redis://sp-api-redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change_me_in_production}
+      DISABLE_FULLTEXT_BROWSER: "1"
+      DISABLED_SOURCES: ${DISABLED_SOURCES:-semantic_scholar,uspto,biorxiv,medrxiv}
+      LENS_API_TOKEN: ${LENS_API_TOKEN:-}
+      EPO_CONSUMER_KEY: ${EPO_CONSUMER_KEY:-}
+      EPO_CONSUMER_SECRET: ${EPO_CONSUMER_SECRET:-}
+      PATENTHUB_API_TOKEN: ${PATENTHUB_API_TOKEN:-}
+      UNPAYWALL_EMAIL: ${UNPAYWALL_EMAIL:-scholarpilot@example.com}
+    command: >
+      celery -A app.workers.celery_app worker
+      -l info -Q default,fulltext -c 4
+    # 2026-05-08：worker 不再写本地 PDF（fulltext_tasks 已 stub）。volume 移除。
+
+  sp-api-beat:
+    build:
+      context: ./sp-api
+    container_name: sp-api-beat
+    restart: unless-stopped
+    depends_on:
+      sp-api-backend:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sp_api}:${POSTGRES_PASSWORD:-changeme}@sp-api-postgres:5432/${POSTGRES_DB:-sp_api}
+      REDIS_URL: redis://sp-api-redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change_me_in_production}
+    command: >
+      celery -A app.workers.celery_app beat -l info
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: sp-api-cloudflared
+    restart: unless-stopped
+    profiles: ["prod"]
+    # NOTE: 用 :- 默认值兜底（不是 :?），让 dev/loadtest 在不带 prod profile 起容器时
+    # 仍能 docker compose config / up，不会被 env 校验阻塞。生产端必须在 .env 配真值。
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-placeholder_not_for_prod}
+    depends_on:
+      sp-api-backend:
+        condition: service_healthy
+
+volumes:
+  sp-api-pgdata:
+  sp-api-redisdata:
+  sp-api-pdfs:

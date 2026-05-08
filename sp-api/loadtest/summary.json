@@ -1,0 +1,224 @@
+{
+    "metrics": {
+        "http_req_tls_handshaking": {
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0
+        },
+        "http_req_connecting": {
+            "avg": 0.0031115286571827983,
+            "min": 0,
+            "med": 0,
+            "max": 1.3163,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 1.9680712210497466,
+            "min": 0,
+            "med": 1.7984,
+            "max": 24.9376,
+            "p(90)": 3.1509400000000007,
+            "p(95)": 3.5197
+        },
+        "iteration_duration": {
+            "p(95)": 2919.04538,
+            "avg": 2006.135179375508,
+            "min": 0,
+            "med": 1997.6679,
+            "max": 3016.9922,
+            "p(90)": 2816.30559
+        },
+        "health_ok_rate": {
+            "passes": 2432,
+            "fails": 0,
+            "thresholds": {
+                "rate>0.95": false
+            },
+            "value": 1
+        },
+        "http_req_duration": {
+            "min": 0,
+            "med": 1.6698,
+            "max": 33.3881,
+            "p(90)": 2.9353,
+            "p(95)": 3.3518,
+            "avg": 1.8859536962420993,
+            "thresholds": {
+                "p(95)<800": false,
+                "p(99)<2000": false
+            }
+        },
+        "http_req_blocked": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.006122415919743442,
+            "min": 0,
+            "med": 0,
+            "max": 9.6264
+        },
+        "http_req_waiting": {
+            "p(95)": 3.2257,
+            "avg": 1.7747690732670032,
+            "min": 0,
+            "med": 1.612,
+            "max": 33.3881,
+            "p(90)": 2.7758
+        },
+        "http_req_receiving": {
+            "p(95)": 0.5588,
+            "avg": 0.10193409259106981,
+            "min": 0,
+            "med": 0,
+            "max": 2.0553,
+            "p(90)": 0.5212
+        },
+        "http_req_failed": {
+            "fails": 7297,
+            "passes": 4864,
+            "thresholds": {
+                "rate<0.05": true
+            },
+            "value": 0.3999671079680947
+        },
+        "data_sent": {
+            "count": 1313359,
+            "rate": 12972.693996271346
+        },
+        "checks": {
+            "passes": 19456,
+            "fails": 0,
+            "value": 1
+        },
+        "iterations": {
+            "count": 2432,
+            "rate": 24.022062359896964
+        },
+        "sources_latency_ms": {
+            "avg": 1.6678501233552647,
+            "min": 0.5068,
+            "med": 1.5842,
+            "max": 24.9376,
+            "p(90)": 2.4507,
+            "p(95)": 2.750244999999999
+        },
+        "http_req_sending": {
+            "max": 1.7161,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.00925053038401447,
+            "min": 0,
+            "med": 0
+        },
+        "app_5xx_total": {
+            "count": 0,
+            "rate": 0,
+            "thresholds": {
+                "count<50": false
+            }
+        },
+        "vus_max": {
+            "value": 100,
+            "min": 100,
+            "max": 100
+        },
+        "http_reqs": {
+            "count": 12161,
+            "rate": 120.12018929223147
+        },
+        "vus": {
+            "value": 1,
+            "min": 1,
+            "max": 100
+        },
+        "data_received": {
+            "count": 20894881,
+            "rate": 206389.03551999433
+        }
+    },
+    "setup_data": {
+        "baseUrl": "http://localhost:18000"
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {
+            "setup": {
+                "checks": {},
+                "name": "setup",
+                "path": "::setup",
+                "id": "5c0f8025f7e0b6654089e5b00e950f1a",
+                "groups": {}
+            },
+            "teardown": {
+                "name": "teardown",
+                "path": "::teardown",
+                "id": "a8a9942382e8ffe2e56ef29e664b8229",
+                "groups": {},
+                "checks": {}
+            }
+        },
+        "checks": {
+            "health 200": {
+                "path": "::health 200",
+                "id": "8e4f90a842a57472549a6b2cf699032d",
+                "passes": 2432,
+                "fails": 0,
+                "name": "health 200"
+            },
+            "health has sources": {
+                "name": "health has sources",
+                "path": "::health has sources",
+                "id": "58609c0e823fc31a986adf34295bd0d3",
+                "passes": 2432,
+                "fails": 0
+            },
+            "api_health 200": {
+                "fails": 0,
+                "name": "api_health 200",
+                "path": "::api_health 200",
+                "id": "f6196df45c129f36247e798e7ae8587d",
+                "passes": 2432
+            },
+            "root 200": {
+                "path": "::root 200",
+                "id": "18095d7fd15e258af10110f2326acdf2",
+                "passes": 2432,
+                "fails": 0,
+                "name": "root 200"
+            },
+            "sources route alive (not 5xx)": {
+                "passes": 2432,
+                "fails": 0,
+                "name": "sources route alive (not 5xx)",
+                "path": "::sources route alive (not 5xx)",
+                "id": "a2a56fc046bbe2c5637f5438119d60b0"
+            },
+            "sources auth-gated (401/403)": {
+                "name": "sources auth-gated (401/403)",
+                "path": "::sources auth-gated (401/403)",
+                "id": "025b9b8c4dbd4379fa896a08c4937ff5",
+                "passes": 2432,
+                "fails": 0
+            },
+            "search route alive (not 5xx)": {
+                "name": "search route alive (not 5xx)",
+                "path": "::search route alive (not 5xx)",
+                "id": "38fea299c0ed0251a07457b6d84b24f9",
+                "passes": 2432,
+                "fails": 0
+            },
+            "search returns 4xx (auth gate)": {
+                "id": "756d819cdc71ca073ec3dfe9866b025e",
+                "passes": 2432,
+                "fails": 0,
+                "name": "search returns 4xx (auth gate)",
+                "path": "::search returns 4xx (auth gate)"
+            }
+        }
+    }
+}

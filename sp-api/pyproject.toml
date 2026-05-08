@@ -1,0 +1,21 @@
+[project]
+name = "sp-api"
+version = "0.1.0"
+description = "ScholarPilot HK client-only backend (fetcher + fulltext bridge, no LLM)"
+requires-python = ">=3.11,<3.13"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

@@ -1,0 +1,5 @@
+# 防止 Windows 行尾符问题导致容器内脚本报错
+* text=auto
+*.sh eol=lf
+*.py eol=lf
+Dockerfile eol=lf

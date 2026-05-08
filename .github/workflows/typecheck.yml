@@ -1,0 +1,55 @@
+name: typecheck
+
+on:
+  push:
+    paths:
+      - "backend/**"
+  pull_request:
+    paths:
+      - "backend/**"
+
+jobs:
+  mypy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install mypy + project deps (mypy 需要项目实际依赖才能解析 import 类型)
+        run: |
+          pip install mypy==1.14.1
+          pip install -r backend/requirements.txt
+
+      - name: Run mypy on hardened modules
+        working-directory: backend
+        run: python -m mypy --config-file mypy.ini
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: |
+          pip install pytest pytest-asyncio redis pydantic pydantic-settings \
+                      sqlalchemy asyncpg PyYAML
+
+      - name: Pipeline runner + fetcher types + staleness + recipe + parity
+        working-directory: backend
+        run: |
+          python -m pytest \
+            tests/harness/test_pipeline_runner.py \
+            tests/services/test_fetcher_types.py \
+            tests/services/test_staleness.py \
+            tests/services/test_project_recipe.py \
+            tests/parity/ \
+            -v --confcutdir=tests/parity

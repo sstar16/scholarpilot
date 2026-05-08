@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+src-tauri/target
+src-tauri/gen
+.env
+.env.*.backup
+
+# unplugin-auto-import / unplugin-vue-components 自动生成（A2.1 ship 后产物）
+# 每次 vite dev/build 自动重写，本地 IDE 用，CI 跑 vite 前会重新生成 — 不入库
+auto-imports.d.ts
+components.d.ts

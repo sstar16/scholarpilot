@@ -1,0 +1,66 @@
+# Web 框架
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+
+# 数据库
+sqlalchemy==2.0.36
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+alembic==1.13.0
+# pgvector==0.3.5  # Phase 2: embedding，暂不安装
+
+# 任务队列
+celery==5.4.0
+redis==5.1.1
+flower==2.0.1
+
+# 认证
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+
+# HTTP 客户端
+httpx==0.27.2
+google-cloud-bigquery==3.41.0
+beautifulsoup4==4.12.3
+lxml==5.3.0
+
+# PDF 文本提取（fulltext_service.extract_text 必需，否则下载/上传 PDF 后无法做 AI 摘要）
+PyMuPDF==1.24.10
+
+# 多格式文档解析（docx/pptx/xlsx/html/md → Markdown），扩展 ScholarPilot 支持的上传格式
+# Microsoft markitdown — MIT, LLM-friendly 输出，保留章节结构
+# 默认即支持 docx/pptx/xlsx/html/md/txt/csv/json/xml/epub，无需 extras
+markitdown>=0.0.1a3,<1.0.0
+
+# 学术 PDF 下载反爬兜底（headless Chrome + stealth.min.js）
+# 只在 httpx 全链失败时启动，成本高但对 lens.org / MDPI / Elsevier / Wiley 等硬反爬站必需
+playwright==1.47.0
+
+# 数据处理
+python-dateutil==2.9.0
+
+# NLP（轻量）
+jieba==0.42.1
+
+# 本地知识库
+duckdb==1.2.1
+
+# 模板引擎（Jinja2 被 FastAPI 依赖，显式声明版本）
+jinja2==3.1.4
+
+# 知识图谱
+networkx>=3.2
+
+# 工具
+pydantic[email]==2.9.0
+pydantic-settings==2.5.0
+python-dotenv==1.0.1
+aiofiles==24.1.0
+# Prompt loader（md frontmatter YAML 解析）
+PyYAML==6.0.2
+
+# 测试
+pytest==8.3.3
+pytest-asyncio==0.24.0

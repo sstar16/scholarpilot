@@ -1,0 +1,75 @@
+name: Client Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'client/**'
+      - '.github/workflows/client-build.yml'
+  pull_request:
+    paths:
+      - 'client/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest, macos-latest, ubuntu-22.04]
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri
+
+      - name: Install Linux build deps (libwebkit2gtk + libsecret for keyring)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libsecret-1-dev
+
+      - name: Install npm deps
+        working-directory: client
+        # 用 npm install 而非 npm ci：开发主机（Windows）npm install 生成的 lock 不包含
+        # macOS/Linux native 平台 deps（如 @emnapi/core / esbuild Linux x64 binary），
+        # CI 上 `npm ci` 会因 "Missing X from lock file" 直接 fail。
+        # `npm install` 会自动 reconcile，慢一点但跨平台稳定。
+        run: npm install --no-audit --no-fund
+
+      - name: Build Tauri app
+        working-directory: client
+        env:
+          VITE_API_BASE_URL: https://api.scholarpilot.top
+          VITE_CLIENT_TYPE: desktop
+        run: npm run tauri:build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: scholarpilot-client-${{ matrix.platform }}
+          path: |
+            client/src-tauri/target/release/bundle/**
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,112 @@
+name: Client Release
+
+# 发布 Tauri 客户端跨平台安装包：tag client-v* 触发
+# 三平台并行 build → 自动建 GitHub Release → 上传 .msi/.dmg/.deb/.AppImage
+#
+# 用法：
+#   git tag client-v0.2.0
+#   git push inner client-v0.2.0
+# tag 必须在 main 分支祖先链上。tauri-action 会自动从 tauri.conf.json 读 version。
+#
+# 与 client-build.yml 区别：
+#   client-build.yml — 任何 PR + main push 都跑，artifact 7 天就过期
+#   release.yml      — 只 tag 触发，artifact 持久（GitHub Release）
+
+on:
+  push:
+    tags:
+      - "client-v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag (例 client-v0.2.0；不存在则创建 draft)"
+        required: true
+        type: string
+
+permissions:
+  contents: write   # 创建 release + 上传 asset
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: "--target x86_64-pc-windows-msvc"
+            asset_pattern: "src-tauri/target/release/bundle/msi/*.msi"
+          - platform: macos-latest
+            # 一次构 universal binary（M1/M2 + Intel）
+            args: "--target universal-apple-darwin"
+            asset_pattern: "src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg"
+          - platform: ubuntu-22.04
+            args: ""
+            asset_pattern: "src-tauri/target/release/bundle/{deb,appimage}/*"
+
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # macOS universal binary 需要 aarch64 + x86_64 两个 target
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri
+
+      - name: Install Linux deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libsecret-1-dev
+
+      - name: Install npm deps
+        working-directory: client
+        run: npm install --no-audit --no-fund
+
+      - name: Build & Release with tauri-action
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 如配了苹果 / Windows 签名 secret，tauri-action 会自动用上：
+          # APPLE_CERTIFICATE / APPLE_CERTIFICATE_PASSWORD / APPLE_SIGNING_IDENTITY
+          # APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID
+          # TAURI_PRIVATE_KEY / TAURI_KEY_PASSWORD（updater 签名）
+          VITE_API_BASE_URL: https://api.scholarpilot.top
+          VITE_CLIENT_TYPE: desktop
+        with:
+          projectPath: client
+          # 如果是 workflow_dispatch 手动触发，用输入的 tag；tag push 时用 ref_name
+          tagName: ${{ github.event.inputs.tag_name || github.ref_name }}
+          releaseName: "ScholarPilot Client ${{ github.event.inputs.tag_name || github.ref_name }}"
+          releaseBody: |
+            ## ScholarPilot Desktop Client
+
+            自动构建产物：
+            - Windows: `.msi`
+            - macOS: `.dmg` (universal: M1/M2 + Intel)
+            - Linux: `.deb` + `.AppImage`
+
+            完整变更见 [git log](../../compare)。
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

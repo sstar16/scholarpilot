@@ -1,0 +1,101 @@
+/* ═══════════════════════════════════════════════════════════════
+   DevTools — Dark Sci-Fi Theme
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --dt-bg-primary: #0a0a1a;
+  --dt-bg-secondary: #111128;
+  --dt-bg-card: #13132b;
+  --dt-bg-elevated: #1a1a3e;
+  --dt-border: #2a2a4a;
+  --dt-text: #e0e0e0;
+  --dt-text-dim: #8888aa;
+  --dt-text-bright: #ffffff;
+  --dt-accent: #7c3aed;
+  --dt-red: #f87171;
+  --dt-green: #4ade80;
+  --dt-blue: #60a5fa;
+  --dt-purple: #c084fc;
+  --dt-yellow: #fbbf24;
+  --dt-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, Consolas, 'Courier New', monospace;
+  --dt-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--dt-bg-primary);
+  color: var(--dt-text);
+  font-family: var(--dt-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--dt-bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--dt-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a5a;
+}
+
+/* ─── Monospace for logs ─── */
+.mono {
+  font-family: var(--dt-mono);
+}
+
+/* ─── Transitions ─── */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.slide-up-enter-active {
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.slide-up-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+/* ─── Element Plus Dark Overrides ─── */
+.el-tree {
+  --el-tree-node-hover-bg-color: rgba(124, 58, 237, 0.15) !important;
+  background: transparent !important;
+  color: var(--dt-text) !important;
+}
+.el-tree-node__content:hover {
+  background-color: rgba(124, 58, 237, 0.1) !important;
+}
+.el-input__wrapper {
+  background-color: var(--dt-bg-secondary) !important;
+  box-shadow: 0 0 0 1px var(--dt-border) inset !important;
+}
+.el-input__inner {
+  color: var(--dt-text) !important;
+}
+.el-button {
+  --el-button-hover-bg-color: var(--dt-bg-elevated);
+}

@@ -1,0 +1,192 @@
+x-backend-env: &backend-env #定义锚点，方面后续直接使用
+  DATABASE_URL: ${DATABASE_URL} #数据库连接字符串
+  REDIS_URL: ${REDIS_URL} #Redis连接字符串
+  SECRET_KEY: ${SECRET_KEY} #密钥
+  ALGORITHM: ${ALGORITHM:-HS256}
+  ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+  OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+  PDF_STORAGE_PATH: /app/data/pdfs
+  EXPORT_PATH: /app/data/exports
+  UNPAYWALL_EMAIL: ${UNPAYWALL_EMAIL:-}
+  DEBUG: ${DEBUG:-false}
+  DISABLED_SOURCES: ${DISABLED_SOURCES:-}
+  LENS_API_TOKEN: ${LENS_API_TOKEN:-}
+  EPO_CONSUMER_KEY: ${EPO_CONSUMER_KEY:-}
+  EPO_CONSUMER_SECRET: ${EPO_CONSUMER_SECRET:-}
+  PATENTHUB_API_TOKEN: ${PATENTHUB_API_TOKEN:-}
+  MAX_PATENTHUB_PDF_PER_ROUND: ${MAX_PATENTHUB_PDF_PER_ROUND:-5}
+  GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/bigquery-sa.json
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+  TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-https://api.telegram.org}
+  FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
+  FEEDBACK_ADMIN_EMAIL: ${FEEDBACK_ADMIN_EMAIL:-}
+  DISABLE_FULLTEXT_BROWSER: ${DISABLE_FULLTEXT_BROWSER:-false}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-urip}
+      POSTGRES_USER: ${POSTGRES_USER:-urip}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-urip}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/tests:/app/tests
+      - ./backend/pytest.ini:/app/pytest.ini
+      - ./backend/scripts:/app/scripts
+      - ./data/pdfs:/app/data/pdfs
+      - ./data/exports:/app/data/exports
+      - ./data/projects:/app/data/projects:rw
+      - ./data/knowledge_graphs:/app/data/knowledge_graphs:rw
+      - ./backend/secrets:/app/secrets:ro
+      - ./data/knowledge_base:/app/data/knowledge_base:ro
+      - ./skills_builtin:/skills_builtin:ro
+    expose:
+      - "8000"
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+                     --proxy-headers --forwarded-allow-ips='*'"
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *backend-env
+      HF_ENDPOINT: https://hf-mirror.com
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/tests:/app/tests
+      - ./backend/pytest.ini:/app/pytest.ini
+      - ./backend/scripts:/app/scripts
+      - ./data/pdfs:/app/data/pdfs
+      - ./data/exports:/app/data/exports
+      - ./data/projects:/app/data/projects:rw
+      - ./data/knowledge_graphs:/app/data/knowledge_graphs:rw
+      - ./backend/secrets:/app/secrets:ro
+      - ./data/knowledge_base:/app/data/knowledge_base:ro
+      - ./skills_builtin:/skills_builtin:ro
+    command: celery -A app.workers.celery_app worker -l info -Q default,fulltext -c 8
+
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *backend-env
+    command: celery -A app.workers.celery_app beat -l info --scheduler celery.beat:PersistentScheduler
+
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      <<: *backend-env
+    ports:
+      - "5555:5555"
+    command: celery -A app.workers.celery_app flower --port=5555
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "80"
+
+  devtools:
+    build:
+      context: ./devtools
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3001:80"
+
+  nginx:
+    image: nginx:1.25-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+
+  # Cloudflare Tunnel（主动 outbound，彻底绕开阿里云入站监控 + 跨境链路偶发 525）
+  # 架构：用户 → CF Edge ──[Tunnel 长连接]──▶ cloudflared 容器 ──▶ nginx:80
+  # - 源站不再需要暴露 80/443 入站（未来可在阿里云防火墙彻底关掉对外）
+  # - Token 在 Zero Trust 面板 Networks → Tunnels 创建时获取，写入 .env
+  # - Public hostname 路由在 Cloudflare 面板配置（scholarpilot.top → http://nginx:80）
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # 仅在 COMPOSE_PROFILES=prod 时启动 (生产 .env 设置)。
+    # 本地开发不需要 Tunnel, 默认不启动 → 避免无 token 时一直 Restarting。
+    profiles:
+      - prod
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - nginx
+
+volumes:
+  pgdata:
+  redisdata:

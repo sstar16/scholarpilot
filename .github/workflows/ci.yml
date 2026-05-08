@@ -1,0 +1,294 @@
+name: CI
+
+# 路径过滤 + 并行 5 job CI（2026-05-08+）
+#
+# 设计原则：
+# - 触发：push to main + 任何 PR
+# - 5 个 job 完全并行，path filter 各自只跑相关代码
+# - 每个 job 失败不阻塞其他（job 间无 needs 依赖）
+# - backend/* legacy job 用 continue-on-error（不阻塞合并）
+# - client e2e 在 PR 上跑（不再分 nightly，本来 20 case 就 1 分钟）
+#
+# 现有 client-build.yml / typecheck.yml 不动，本 workflow 是 fast-feedback 层。
+# client-build.yml 跑跨平台 .msi 打包（重，仅 main push），ci.yml 跑单测/类型检查（轻，每 PR）。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一 PR 新 push 会取消老 run，省 CI 时长
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # ─── 路径过滤：只跑 diff 真正命中的 job ──────────────────────────────────
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      client: ${{ steps.filter.outputs.client }}
+      client_rust: ${{ steps.filter.outputs.client_rust }}
+      sp_api: ${{ steps.filter.outputs.sp_api }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # 注意 client_rust 在 client 之上单独细分，逻辑上 client_rust=true 时 client 也会 true
+          # CI 里两个 job 各自独立跑，避免重复 cargo cache miss
+          filters: |
+            client:
+              - 'client/**'
+              - '.github/workflows/ci.yml'
+            client_rust:
+              - 'client/src-tauri/**'
+              - '.github/workflows/ci.yml'
+            sp_api:
+              - 'sp-api/**'
+              - '.github/workflows/ci.yml'
+            backend:
+              - 'backend/**'
+              - '.github/workflows/ci.yml'
+
+  # ─── client TS/Vue 前端测试（vitest + vue-tsc）───────────────────────────
+  client-test:
+    name: Client · vue-tsc + vitest
+    needs: changes
+    if: needs.changes.outputs.client == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install npm deps
+        working-directory: client
+        # 与 client-build.yml 保持一致：用 npm install 不用 npm ci
+        # 原因：开发主机 Windows 生成的 lock 不含 Linux native deps
+        run: npm install --no-audit --no-fund
+
+      - name: vue-tsc typecheck
+        working-directory: client
+        run: npx vue-tsc --noEmit
+
+      - name: vitest unit tests
+        working-directory: client
+        run: npm test -- --reporter=default --reporter=junit --outputFile=test-results/vitest-junit.xml
+
+      - name: Upload vitest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-vitest-report
+          path: client/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ─── client Rust（src-tauri/）─────────────────────────────────────────────
+  client-rust:
+    name: Client · cargo check + test
+    needs: changes
+    if: needs.changes.outputs.client_rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux deps (libwebkit2gtk + libsecret for keyring)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libsecret-1-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri
+
+      - name: cargo check
+        working-directory: client/src-tauri
+        run: cargo check --all-targets --locked
+
+      - name: cargo test
+        working-directory: client/src-tauri
+        # cargo test 失败不阻塞（src-tauri 当前 0 测试，预留扩展位）
+        continue-on-error: true
+        run: cargo test --all-targets --locked
+
+  # ─── sp-api 测试（pytest，无 web 框架，无 LLM）─────────────────────────
+  sp-api-test:
+    name: sp-api · pytest
+    needs: changes
+    if: needs.changes.outputs.sp_api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: sp-api/requirements.txt
+
+      - name: Install deps
+        working-directory: sp-api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pytest
+        working-directory: sp-api
+        env:
+          # 测试用 sqlite in-memory + fake redis（tests/conftest.py fixture 自管）
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: pytest -v --tb=short --junitxml=test-results/pytest-junit.xml
+
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sp-api-pytest-report
+          path: sp-api/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ─── backend legacy 测试（不阻塞，保留可见性）─────────────────────────
+  backend-test:
+    name: backend · legacy pytest (non-blocking)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # legacy CN backend，client 主线已不依赖。失败提醒不阻塞合并。
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install minimal test deps
+        run: |
+          pip install pytest pytest-asyncio redis pydantic pydantic-settings \
+                      sqlalchemy asyncpg PyYAML
+
+      - name: Pipeline runner + fetcher types + staleness + recipe + parity
+        working-directory: backend
+        run: |
+          python -m pytest \
+            tests/harness/test_pipeline_runner.py \
+            tests/services/test_fetcher_types.py \
+            tests/services/test_staleness.py \
+            tests/services/test_project_recipe.py \
+            tests/parity/ \
+            -v --confcutdir=tests/parity
+
+  # ─── client Playwright e2e（每 PR 跑，单 chromium project ~1 min）────
+  client-e2e:
+    name: Client · playwright e2e
+    needs: changes
+    if: needs.changes.outputs.client == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install npm deps
+        working-directory: client
+        run: npm install --no-audit --no-fund
+
+      - name: Install Playwright browsers (chromium only)
+        working-directory: client
+        # playwright.config.ts 只配 chromium-desktop project，单 browser 即可
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        working-directory: client
+        env:
+          CI: "1"
+        run: npx playwright test --project=chromium-desktop
+
+      - name: Upload playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-playwright-report
+          path: |
+            client/playwright-report/
+            client/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ─── 汇总 status（让 main 分支保护规则只盯一个 check）────────────────
+  ci-summary:
+    name: CI summary
+    needs:
+      - changes
+      - client-test
+      - client-rust
+      - sp-api-test
+      - backend-test
+      - client-e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        # 只让"实际 run 且非 skipped 也非 continue-on-error"的 job 决定状态。
+        # backend-test 永远不阻塞（continue-on-error），client-rust 的 cargo test step 也允许 fail。
+        run: |
+          echo "client-test:  ${{ needs.client-test.result }}"
+          echo "client-rust:  ${{ needs.client-rust.result }}"
+          echo "sp-api-test:  ${{ needs.sp-api-test.result }}"
+          echo "backend-test: ${{ needs.backend-test.result }}"
+          echo "client-e2e:   ${{ needs.client-e2e.result }}"
+          # success / skipped / cancelled 都视为通过；failure 才挂
+          for r in \
+            "${{ needs.client-test.result }}" \
+            "${{ needs.client-rust.result }}" \
+            "${{ needs.sp-api-test.result }}" \
+            "${{ needs.client-e2e.result }}"; do
+            if [ "$r" = "failure" ]; then
+              echo "::error::A required job failed."
+              exit 1
+            fi
+          done
+          echo "All required jobs passed (or skipped)."

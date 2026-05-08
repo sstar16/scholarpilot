@@ -1,0 +1,51 @@
+{
+  "description": "ScorePhase determinism — 3 docs, fixed scoring responses, expected ranking + bucket assignment.",
+  "input": {
+    "scoring_cutoff": 7.0,
+    "memory_md": "# USER\nresearcher in NLP\n\n# PROJECT\nLLM evaluation under low-resource settings",
+    "project": {
+      "title": "LLM Eval",
+      "description": "evaluating LLM performance on low-resource benchmarks"
+    },
+    "docs": [
+      {
+        "external_id": "openalex:W001",
+        "source": "openalex",
+        "title": "Transformer scaling laws",
+        "abstract": "We study scaling laws for transformer models.",
+        "_relevance_score": 0.55
+      },
+      {
+        "external_id": "openalex:W002",
+        "source": "openalex",
+        "title": "Rule-based grammar checker",
+        "abstract": "A traditional rule-based system for grammar.",
+        "_relevance_score": 0.40
+      },
+      {
+        "external_id": "crossref:DOI/10.x/abc",
+        "source": "crossref",
+        "title": "Few-shot LLM evaluation under low-resource settings",
+        "abstract": "Benchmarking few-shot evaluation methods.",
+        "_relevance_score": 0.62
+      }
+    ]
+  },
+  "llm_responses_by_title_substring": {
+    "Transformer scaling": "{\"score\": 7.5, \"rationale\": \"adjacent topic\", \"one_line\": \"Scaling laws related but not target\"}",
+    "Rule-based grammar": "{\"score\": 4.0, \"rationale\": \"off-topic, rule-based\", \"one_line\": \"Off-topic\"}",
+    "Few-shot LLM evaluation": "{\"score\": 9.0, \"rationale\": \"direct match\", \"one_line\": \"Directly addresses LLM eval under low-resource\"}"
+  },
+  "expected_output": {
+    "above_cutoff_ids": ["crossref:DOI/10.x/abc", "openalex:W001"],
+    "below_cutoff_ids": ["openalex:W002"],
+    "scores": {
+      "crossref:DOI/10.x/abc": 9.0,
+      "openalex:W001": 7.5,
+      "openalex:W002": 4.0
+    },
+    "above_cutoff_count": 2,
+    "below_cutoff_count": 1,
+    "cutoff": 7.0
+  }
+}

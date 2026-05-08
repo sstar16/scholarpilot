@@ -1,0 +1,39 @@
+[package]
+name = "scholarpilot-client"
+version = "0.2.0"
+description = "ScholarPilot 桌面客户端"
+authors = ["scholarpilot"]
+edition = "2021"
+
+[lib]
+name = "scholarpilot_client_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+keyring = "2.3"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+# 文件日志：写到 app_data_dir/logs/ScholarPilot-<YYYY-MM-DD>.log
+tauri-plugin-log = "2"
+log = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tokio = { version = "1", features = ["fs", "io-util"] }
+# 2026-05-08：pdf_fetch_via_proxy 用 reqwest::Response::bytes_stream → StreamExt
+# 来 chunked 写盘，依赖 futures-util。reqwest 0.13 已间接依赖；显式列出锁版本。
+futures-util = "0.3"
+base64 = "0.22"
+# C10: Tauri Rust PDF fetcher — reqwest 0.13 (已被 tauri 间接依赖，复用版本避免重复编译)
+# features: rustls-tls + cookies + gzip/brotli/zstd (Chrome 标 Accept-Encoding) + stream
+# 不引入 reqwest_cookie_store 0.8 (它是 reqwest 0.12 系)，reqwest 0.13 内置 cookies feature 自带 cookie store
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "rustls-no-provider", "cookies", "gzip", "brotli", "zstd", "stream", "http2", "charset"] }
+url = "2"
+regex = "1"
+once_cell = "1"

@@ -1,0 +1,42 @@
+# 安全：service account / 凭证 — 绝对不能进 image layer
+# 运行时由 docker-compose volume mount 注入，build 阶段不需要
+secrets/
+
+# 数据目录 — 通过 volume mount，build 不需要
+data/
+
+# Python 缓存 / 测试产物
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+.tox/
+
+# 本地工具状态
+.omc/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Git (build 不需要)
+.git/
+.gitignore
+
+# 文档（不进 image）
+*.md
+
+# 生产不跑测试
+tests/
+
+# Logs
+*.log

@@ -1,0 +1,493 @@
+/* ═══════════════════════════════════════════════════════════
+   ScholarPilot Design System — "Ink & Signal"
+   Inspired by Chinese ink wash + scientific instruments
+   Source of truth: ScholarPilot Design System/colors_and_type.css
+   ═══════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Noto+Serif+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* ── Ink palette · 9-step neutral ── */
+  --ink-950: #0a0e14;
+  --ink-900: #111827;
+  --ink-800: #1a2233;
+  --ink-700: #243044;
+  --ink-600: #334155;
+  --ink-500: #475569;
+  --ink-400: #64748b;
+  --ink-300: #94a3b8;
+  --ink-200: #cbd5e1;
+  --ink-100: #e8edf3;
+  --ink-50:  #f1f5f9;
+
+  /* ── Signal colors · functional accents, ≤2 per screen ── */
+  --signal-teal:        #0d9488;   /* primary CTA, active */
+  --signal-teal-light:  #14b8a6;
+  --signal-teal-bg:     rgba(13, 148, 136, 0.08);
+
+  --signal-amber:       #d97706;   /* waiting, needs attention */
+  --signal-amber-light: #f59e0b;
+  --signal-amber-bg:    rgba(217, 119, 6, 0.08);
+
+  --signal-coral:       #dc2626;   /* error, destructive */
+  --signal-coral-bg:    rgba(220, 38, 38, 0.06);
+
+  --signal-blue:        #2563eb;   /* info, DOI link */
+  --signal-blue-light:  #3b82f6;
+  --signal-blue-bg:     rgba(37, 99, 235, 0.06);
+
+  --signal-emerald:     #059669;   /* success, completed */
+  --signal-emerald-bg:  rgba(5, 150, 105, 0.08);
+
+  --signal-purple:      #6d28d9;   /* collaboration mode (reserved) */
+  --signal-purple-light: #7c3aed;
+  --signal-purple-bg:   rgba(109, 40, 217, 0.08);
+
+  /* ── Paper surfaces ── */
+  --paper:       #ffffff;          /* chat, main canvas */
+  --paper-warm:  #fefcf9;          /* paper-tinted card hover */
+  --paper-cool:  #f8fafc;          /* app body, left rail */
+  --paper-hover: #f1f5f9;          /* row hover */
+
+  /* ── Typography stacks ── */
+  --font-display: 'Noto Serif SC', 'Georgia', 'Songti SC', serif;
+  --font-body:    'DM Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* ── Radius scale ── */
+  --radius-sm:   6px;      /* tag, input */
+  --radius-md:   10px;     /* card */
+  --radius-lg:   14px;     /* rich message */
+  --radius-xl:   20px;     /* modal, large panel */
+  --radius-full: 100px;    /* pill */
+
+  /* ── Spacing · 8-px cadence (4 allowed for tight clusters) ── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── Shadows · layered paper effect ── */
+  --shadow-xs:  0 1px 2px rgba(0,0,0,0.04);
+  --shadow-sm:  0 2px 8px rgba(0,0,0,0.05);
+  --shadow-md:  0 4px 16px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+  --shadow-lg:  0 8px 32px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04);
+  --shadow-xl:  0 16px 48px rgba(0,0,0,0.10), 0 4px 12px rgba(0,0,0,0.05);
+  --shadow-glow-teal: 0 0 20px rgba(13, 148, 136, 0.15);
+
+  /* ── Motion ── */
+  --ease-out:       cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring:    cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast:   150ms;
+  --duration-normal: 250ms;
+  --duration-slow:   400ms;
+
+  /* ── Semantic type tokens ── */
+  --type-hero-size:  32px;  --type-hero-weight:  500; --type-hero-lh:  1.3;
+  --type-h1-size:    26px;  --type-h1-weight:    900; --type-h1-lh:    1.3;
+  --type-h2-size:    20px;  --type-h2-weight:    600; --type-h2-lh:    1.4;
+  --type-h3-size:    17px;  --type-h3-weight:    700; --type-h3-lh:    1.4;
+  --type-card-size:  15px;  --type-card-weight:  600; --type-card-lh:  1.45;
+  --type-body-size:  14px;  --type-body-weight:  400; --type-body-lh:  1.6;
+  --type-sub-size:   13px;  --type-sub-weight:   400; --type-sub-lh:   1.5;
+  --type-meta-size:  12px;  --type-meta-weight:  500; --type-meta-lh:  1.4;
+  --type-micro-size: 11px;  --type-micro-weight: 500; --type-micro-lh: 1.4;
+  --type-code-size:  13px;  --type-code-weight:  400; --type-code-lh:  1.5;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Semantic element defaults — prefer these over hard-coded sizes
+   ═══════════════════════════════════════════════════════════ */
+
+html,
+body {
+  font-family: var(--font-body);
+  color: var(--ink-900);
+  background: var(--paper-cool);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1 {
+  font-family: var(--font-display);
+  font-size: var(--type-h1-size);
+  font-weight: var(--type-h1-weight);
+  line-height: var(--type-h1-lh);
+  letter-spacing: -0.5px;
+  color: var(--ink-900);
+  margin: 0;
+}
+h2 {
+  font-family: var(--font-display);
+  font-size: var(--type-h2-size);
+  font-weight: var(--type-h2-weight);
+  line-height: var(--type-h2-lh);
+  color: var(--ink-900);
+  margin: 0;
+}
+h3 {
+  font-family: var(--font-display);
+  font-size: var(--type-h3-size);
+  font-weight: var(--type-h3-weight);
+  line-height: var(--type-h3-lh);
+  color: var(--ink-900);
+  margin: 0;
+}
+p {
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-lh);
+  color: var(--ink-700);
+  margin: 0;
+}
+small,
+.text-meta {
+  font-size: var(--type-meta-size);
+  color: var(--ink-400);
+}
+code,
+pre,
+.text-mono {
+  font-family: var(--font-mono);
+  font-size: var(--type-code-size);
+  color: var(--ink-800);
+}
+
+/* ── Element Plus overrides ── */
+.el-button--primary {
+  --el-button-bg-color: var(--signal-teal) !important;
+  --el-button-border-color: var(--signal-teal) !important;
+  --el-button-hover-bg-color: var(--signal-teal-light) !important;
+  --el-button-hover-border-color: var(--signal-teal-light) !important;
+}
+
+.el-progress-bar__inner {
+  background: linear-gradient(90deg, var(--signal-teal), var(--signal-teal-light)) !important;
+}
+
+.el-tag--primary { --el-tag-bg-color: var(--signal-teal-bg);    --el-tag-border-color: transparent; --el-tag-text-color: var(--signal-teal); }
+.el-tag--success { --el-tag-bg-color: var(--signal-emerald-bg); --el-tag-border-color: transparent; --el-tag-text-color: var(--signal-emerald); }
+.el-tag--warning { --el-tag-bg-color: var(--signal-amber-bg);   --el-tag-border-color: transparent; --el-tag-text-color: var(--signal-amber); }
+.el-tag--danger  { --el-tag-bg-color: var(--signal-coral-bg);   --el-tag-border-color: transparent; --el-tag-text-color: var(--signal-coral); }
+
+/* ── Utility animations (reusable) ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50%      { opacity: 1;   transform: scale(1.15); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* A2 · Rich Message 统一入场：scale + fade + 上浮，带 spring 尾劲 */
+@keyframes richEnter {
+  0%   { opacity: 0; transform: scale(0.96) translateY(10px); }
+  100% { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+/* A3 · iMessage 风气泡入场：从输入框位置"生长"到最终位置
+   用户：transform-origin bottom right，从输入框右下角生长上来
+   AI：transform-origin bottom left，从对侧生长
+   关键：起点 scale 小 + translateY 下偏，带 spring overshoot */
+@keyframes userEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(28px) scale(0.3);
+    filter: blur(2px);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.04);
+    filter: blur(0);
+  }
+  80% {
+    transform: translateY(1px) scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+@keyframes aiEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(28px) scale(0.3);
+    filter: blur(2px);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.04);
+    filter: blur(0);
+  }
+  80% {
+    transform: translateY(1px) scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+@keyframes richStamp {
+  0%   { opacity: 0; transform: scale(0.88) rotate(-1.5deg); filter: blur(4px); }
+  60%  {             transform: scale(1.02) rotate(0.3deg);  filter: blur(0); }
+  100% { opacity: 1; transform: scale(1)    rotate(0);       filter: blur(0); }
+}
+@keyframes tail {
+  0%, 100% { transform: rotate(0deg); }
+  50%      { transform: rotate(6deg); }
+}
+@keyframes graphIn {
+  0%   { opacity: 0; transform: scale(0.4); }
+  60%  {             transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInR {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes breathe-soft {
+  0%, 100% { box-shadow: 0 4px 16px rgba(198, 172, 87, 0.2); }
+  50%      { box-shadow: 0 6px 28px rgba(198, 172, 87, 0.45); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Rich-message 公共骨架
+   所有富消息组件（KeywordConfirm / SearchProgress / RoundComplete /
+   Collaboration* / PdfImport*）共享的容器 / 头部 / 主体样式。
+   子组件只需要在 scoped style 里覆写 variant 色（amber/blue/emerald/
+   purple），不用重复写这 15 行基础 CSS。
+   ═══════════════════════════════════════════════════════════ */
+.rich-msg {
+  margin: var(--space-4) 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  animation: richStamp 550ms var(--ease-spring) both;
+  transform-origin: left center;
+}
+.rich-msg__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px var(--space-4);
+  font-weight: 600;
+  font-size: var(--type-sub-size);
+  color: var(--ink-900);
+  background: rgba(255, 255, 255, 0.5);
+}
+.rich-msg__header .title {
+  font-family: var(--font-display);
+}
+.rich-msg__header .spacer {
+  flex: 1;
+}
+.rich-msg__body {
+  padding: var(--space-4);
+}
+
+/* ── Tactile press feedback (global) ── */
+.btn-tap:active,
+button:active:not(:disabled),
+.el-button:active:not(.is-disabled) {
+  transform: scale(0.97);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Paper grid (journal texture) — 首页 hj-grid 同款，
+   其他页面（聊天/设置/资料）也可挂载以统一视觉
+   ═══════════════════════════════════════════════════════════ */
+.paper-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(120, 100, 80, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 100, 80, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ElMessage / ElMessageBox 期刊风格（1:1 对齐 web frontend
+   design-system.css:339-388；所有 ElMessage 调用都走这套）
+   + 强制 top: 20px / bottom: auto 防 Tauri webview 渲染异常出现在底部
+   ═══════════════════════════════════════════════════════════ */
+.el-message {
+  min-width: 320px;
+  padding: 12px 20px 12px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--ink-100);
+  background: rgba(253, 252, 248, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 12px 32px rgba(20, 20, 20, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  font-family: var(--font-body);
+  animation: richStamp 420ms var(--ease-spring) both !important;
+  /* 强制顶部定位 — Tauri webview 偶尔会让 fixed top:20px 错位到底部 */
+  top: 20px !important;
+  bottom: auto !important;
+}
+.el-message .el-message__icon { font-size: 18px; margin-right: 8px; }
+.el-message .el-message__content {
+  color: var(--ink-900);
+  font-size: var(--type-sub-size);
+  letter-spacing: 0.01em;
+  font-weight: 500;
+}
+.el-message.el-message--success {
+  border-color: rgba(5, 150, 105, 0.28);
+  background: linear-gradient(180deg, rgba(240, 253, 244, 0.96), rgba(253, 252, 248, 0.94));
+  box-shadow: 0 12px 32px rgba(5, 150, 105, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.el-message.el-message--success .el-message__icon { color: var(--signal-emerald); }
+.el-message.el-message--warning {
+  border-color: rgba(217, 119, 6, 0.32);
+  background: linear-gradient(180deg, rgba(254, 252, 232, 0.96), rgba(253, 252, 248, 0.94));
+  box-shadow: 0 12px 32px rgba(217, 119, 6, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.el-message.el-message--warning .el-message__icon { color: var(--signal-amber); }
+.el-message.el-message--error {
+  border-color: rgba(220, 38, 38, 0.32);
+  background: linear-gradient(180deg, rgba(254, 242, 242, 0.96), rgba(253, 252, 248, 0.94));
+  box-shadow: 0 12px 32px rgba(220, 38, 38, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.el-message.el-message--error .el-message__icon { color: #dc2626; }
+.el-message.el-message--info {
+  border-color: rgba(37, 99, 235, 0.28);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.96), rgba(253, 252, 248, 0.94));
+  box-shadow: 0 12px 32px rgba(37, 99, 235, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.el-message.el-message--info .el-message__icon { color: var(--signal-blue); }
+
+/* ElNotification — 更大的通知卡片 */
+.el-notification {
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--ink-100) !important;
+  background: rgba(253, 252, 248, 0.97) !important;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 20px 48px rgba(20, 20, 20, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+  animation: richStamp 500ms var(--ease-spring) both !important;
+}
+.el-notification .el-notification__title { font-family: var(--font-display); font-weight: 700; }
+
+/* ElMessageBox — 确认对话框 */
+.el-message-box {
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--ink-100) !important;
+  background: rgba(253, 252, 248, 0.98) !important;
+  backdrop-filter: blur(20px);
+  box-shadow: 0 24px 64px rgba(20, 20, 20, 0.18) !important;
+  font-family: var(--font-body);
+}
+.el-message-box__title { font-family: var(--font-display); font-weight: 700; }
+
+/* ElDialog — 期刊风，顶部金色 hairline + 纸色背景 */
+.el-dialog {
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid rgba(20, 20, 20, 0.1) !important;
+  background: rgba(253, 252, 248, 0.98) !important;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 28px 72px rgba(20, 20, 20, 0.22) !important;
+  overflow: hidden !important;
+  font-family: var(--font-body);
+  animation: richStamp 480ms var(--ease-spring) both !important;
+}
+.el-dialog::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(198, 172, 87, 0.55), transparent);
+  pointer-events: none;
+}
+.el-dialog__header {
+  font-family: var(--font-display);
+  padding: 18px 22px 10px !important;
+}
+.el-dialog__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--ink-900);
+}
+.el-dialog__body { padding: 8px 22px 18px !important; }
+.el-dialog__footer { padding: 12px 22px 18px !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   sp-toast — 统一 useToast() 入场 / 出场动画 + accent border
+   ═══════════════════════════════════════════════════════════ */
+@keyframes spToastIn {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spToastOut {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.98); }
+}
+
+.sp-toast.el-message {
+  font-size: 13px !important;
+  padding: 10px 16px !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  animation: spToastIn 240ms cubic-bezier(0.4, 0, 0.2, 1) both !important;
+}
+/* Per-type accent border-left */
+.sp-toast--success.el-message { border-left: 3px solid var(--signal-emerald) !important; }
+.sp-toast--error.el-message   { border-left: 3px solid var(--signal-coral) !important; }
+.sp-toast--warning.el-message { border-left: 3px solid var(--signal-amber) !important; }
+.sp-toast--info.el-message    { border-left: 3px solid var(--signal-blue) !important; }
+
+/* ═══════════════════════════════════════════════════════════
+   rich-msg-enter — 富消息统一入场 keyframe
+   挂 .rich-msg-enter class 即可，三个组件共用
+   ═══════════════════════════════════════════════════════════ */
+@keyframes richMsgEnter {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.rich-msg-enter {
+  animation: richMsgEnter 280ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ElTooltip / ElPopper — 小气泡 */
+.el-popper.is-light {
+  border: 1px solid rgba(198, 172, 87, 0.3) !important;
+  background: rgba(253, 252, 248, 0.98) !important;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(20, 20, 20, 0.12) !important;
+  font-family: var(--font-body);
+}
+.el-popper.is-dark {
+  background: var(--ink-900) !important;
+  border: 1px solid var(--ink-700) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+}

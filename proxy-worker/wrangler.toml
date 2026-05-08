@@ -1,0 +1,10 @@
+name = "scholarpilot-proxy"
+main = "src/worker.js"
+compatibility_date = "2024-12-01"
+
+# 每个请求 CPU 限制（免费套餐 10ms，付费 50s）
+# [limits]
+# cpu_ms = 10
+
+# 访问令牌通过 wrangler secret put ACCESS_TOKEN 配置
+# 不在配置文件里硬编码，避免泄漏。
